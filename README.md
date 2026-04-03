@@ -48,6 +48,35 @@ You can also use the scripts directly in any project directory:
 python -m scripts init --name "My Project"
 ```
 
+## Usage with Claude Code (Recommended)
+
+The easiest way to use this skill is through **natural language conversation** with Claude Code. After installation, you don't need to run any commands manually — just describe what you want to do:
+
+**Examples:**
+
+> "Help me start a new product called MyApp"
+
+> "Write the PRD for a task management tool"
+
+> "Design the technical architecture"
+
+> "Plan the iteration and start development"
+
+> "The requirement has changed, update the PRD"
+
+Claude Code will automatically:
+1. Recognize your intent (Phase 0)
+2. Execute the appropriate phase workflow
+3. Generate and validate all artifacts (PRD, Architecture, Test Outline, etc.)
+4. Manage iteration planning and execution
+5. Handle change cascading when requirements evolve
+
+**No need to memorize commands** — just talk to Claude Code naturally, and the skill takes care of the rest.
+
+## Manual Usage (Advanced)
+
+> The following sections describe how to use the scripts manually. For most users, the Claude Code conversation approach above is sufficient.
+
 ## Quick Start
 
 ### 1. Initialize a New Project
