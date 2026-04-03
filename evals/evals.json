@@ -1,0 +1,26 @@
+{
+  "skill_name": "product-lifecycle",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "请验证 /Users/admin/Documents/Work/Projects/API Preprocessor/Docs/product/PRD.md 这个 PRD 文档，类型是 prd。告诉我分数和通过状态，并列出所有 issues。",
+      "expected_output": "运行 doc_validator 验证 PRD，输出 score/100 和 PASSED/FAILED 状态，以及具体 issues 和 suggestions。PRD 包含 F01-F06 六个功能点和非功能需求，基础分 ≥ 50 加上深度奖励分应能达到 70+。若缺少范围边界或风险章节，给出 warning 而非 error。",
+      "assertions": [],
+      "files": ["/Users/admin/Documents/Work/Projects/API Preprocessor/Docs/product/PRD.md"]
+    },
+    {
+      "id": 2,
+      "prompt": "我有一份 PRD 文档在 /Users/admin/Documents/Work/Projects/API Preprocessor/Docs/product/PRD.md，请从中提取功能点列表（功能 ID 和名称），然后告诉我提取结果。不需要生成测试大纲文件，只告诉我提取到的功能点。",
+      "expected_output": "强匹配提取 PRD 中 ### F01 — ... 格式的功能点，输出 F01-F06 的真实功能名称（如「API 导入与连通性验证」），不能输出「功能流程」「交互设计」等章节标题。",
+      "assertions": [],
+      "files": ["/Users/admin/Documents/Work/Projects/API Preprocessor/Docs/product/PRD.md"]
+    },
+    {
+      "id": 3,
+      "prompt": "请验证 /Users/admin/Documents/Work/Projects/API Preprocessor/Docs/tests/MASTER_OUTLINE.md 这个测试大纲文档，使用 test_outline 类型。告诉我分数和通过状态，以及每个检查项的结果。",
+      "expected_output": "运行 test_outline 验证器（新增功能），输出 score/100 和通过状态。MASTER_OUTLINE.md 包含 14 个测试场景、TST-F0N-S0N ID、前置条件、测试步骤、期望结果、E2E 标记，分数应 ≥ 70 通过。",
+      "assertions": [],
+      "files": ["/Users/admin/Documents/Work/Projects/API Preprocessor/Docs/tests/MASTER_OUTLINE.md"]
+    }
+  ]
+}
