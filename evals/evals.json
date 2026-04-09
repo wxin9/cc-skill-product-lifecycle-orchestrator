@@ -1,26 +1,76 @@
 {
-  "skill_name": "product-lifecycle",
+  "version": "1.0",
+  "skill": "product-lifecycle",
   "evals": [
     {
-      "id": 1,
-      "prompt": "请验证 /Users/admin/Documents/Work/Projects/API Preprocessor/Docs/product/PRD.md 这个 PRD 文档，类型是 prd。告诉我分数和通过状态，并列出所有 issues。",
-      "expected_output": "运行 doc_validator 验证 PRD，输出 score/100 和 PASSED/FAILED 状态，以及具体 issues 和 suggestions。PRD 包含 F01-F06 六个功能点和非功能需求，基础分 ≥ 50 加上深度奖励分应能达到 70+。若缺少范围边界或风险章节，给出 warning 而非 error。",
-      "assertions": [],
-      "files": ["/Users/admin/Documents/Work/Projects/API Preprocessor/Docs/product/PRD.md"]
+      "id": "eval-01",
+      "name": "vs_none: 新产品 PRD 起草",
+      "prompt": "我想做一个帮助独立开发者追踪接单收入和客户联系记录的轻量工具。帮我规划一下。",
+      "condition": "with_skill",
+      "expected": [
+        "触发 Phase 0 意图识别",
+        "识别为全新产品，从 Phase 1 开始",
+        "提供执行计划并等待确认",
+        "执行 Phase 2 draft prd"
+      ],
+      "without_skill_expected": "给出松散的建议，无结构化 PRD，无强制步骤",
+      "notes": "验证 AI 协作起草（Draft Mode）是否被触发"
     },
     {
-      "id": 2,
-      "prompt": "我有一份 PRD 文档在 /Users/admin/Documents/Work/Projects/API Preprocessor/Docs/product/PRD.md，请从中提取功能点列表（功能 ID 和名称），然后告诉我提取结果。不需要生成测试大纲文件，只告诉我提取到的功能点。",
-      "expected_output": "强匹配提取 PRD 中 ### F01 — ... 格式的功能点，输出 F01-F06 的真实功能名称（如「API 导入与连通性验证」），不能输出「功能流程」「交互设计」等章节标题。",
-      "assertions": [],
-      "files": ["/Users/admin/Documents/Work/Projects/API Preprocessor/Docs/product/PRD.md"]
+      "id": "eval-02",
+      "name": "vs_none: 复合意图识别",
+      "prompt": "我修了个 bug，顺便发现其实需求描述不清楚，想同时处理一下。",
+      "condition": "with_skill",
+      "expected": [
+        "识别复合意图（bug fix + PRD 变更）",
+        "列出两个意图及优先级",
+        "询问用户确认执行顺序",
+        "先处理 bug（Phase 10c），再处理 PRD 变更（Phase 10a）"
+      ],
+      "without_skill_expected": "随意处理，可能只处理 bug 忽略需求问题，或强制用户选一个",
+      "notes": "验证复合意图分解能力"
     },
     {
-      "id": 3,
-      "prompt": "请验证 /Users/admin/Documents/Work/Projects/API Preprocessor/Docs/tests/MASTER_OUTLINE.md 这个测试大纲文档，使用 test_outline 类型。告诉我分数和通过状态，以及每个检查项的结果。",
-      "expected_output": "运行 test_outline 验证器（新增功能），输出 score/100 和通过状态。MASTER_OUTLINE.md 包含 14 个测试场景、TST-F0N-S0N ID、前置条件、测试步骤、期望结果、E2E 标记，分数应 ≥ 70 通过。",
-      "assertions": [],
-      "files": ["/Users/admin/Documents/Work/Projects/API Preprocessor/Docs/tests/MASTER_OUTLINE.md"]
+      "id": "eval-03",
+      "name": "gate_enforcement: 迭代门控 + DoD + Sprint Review",
+      "prompt": "我的迭代 1 所有任务都完成了，测试也都通过了，请帮我通过门控。",
+      "condition": "with_skill",
+      "expected": [
+        "运行 ./lifecycle gate --iteration 1",
+        "4 层产物验证通过",
+        "DoD 检查执行",
+        "Sprint Review 自动生成",
+        "提示记录实际工时"
+      ],
+      "notes": "验证 Pro 版门控增强（DoD + velocity + sprint_review）"
+    },
+    {
+      "id": "eval-04",
+      "name": "cross_model: Haiku 流程完成率",
+      "prompt": "帮我初始化一个新的产品管理项目，项目名叫 TaskFlow。",
+      "condition": "with_skill_haiku",
+      "expected": [
+        "Phase 0 意图识别完成",
+        "Phase 1 初始化：./lifecycle init --name TaskFlow",
+        "生成 lifecycle 脚本",
+        "DoD / Risk Register / ADR 目录均初始化",
+        "提示下一步: draft prd"
+      ],
+      "notes": "验证 Haiku 能否在 Gate 强制下完成流程（vs 无 Gate 情况下流程完成率更低）"
+    },
+    {
+      "id": "eval-05",
+      "name": "vs_none: 项目类型自适应测试维度",
+      "prompt": "我的项目是一个数据处理管道，用 Kafka + Flink 处理实时流数据。帮我生成测试大纲。",
+      "condition": "with_skill",
+      "expected": [
+        "识别项目类型为 data-pipeline",
+        "使用维度集: [DATA][ASYNC][IDEMPOTENCY][VOLUME][SCHEMA][BACKFILL]",
+        "不使用 Web 专属的 [UI][AUTH] 维度",
+        "生成 Docs/tests/MASTER_OUTLINE.md"
+      ],
+      "without_skill_expected": "使用固定 7 维度（含不相关的 [UI][AUTH]）",
+      "notes": "验证自适应测试维度选择"
     }
   ]
 }

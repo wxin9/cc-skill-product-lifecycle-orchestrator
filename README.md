@@ -1,200 +1,198 @@
 [English](README.md) | [中文](README.zh-CN.md)
 
-# Product-Lifecycle Skill
+# Product Lifecycle
 
-[![GitHub license](https://img.shields.io/github/license/wxin9/cc-skill-product-lifecycle)](LICENSE)
-[![GitHub release](https://img.shields.io/github/v/release/wxin9/cc-skill-product-lifecycle)](https://github.com/wxin9/cc-skill-product-lifecycle/releases)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.8%2B-brightgreen.svg)](https://www.python.org/)
+[![Release](https://img.shields.io/github/v/release/wxin9/cc-skill-product-lifecycle)](https://github.com/wxin9/cc-skill-product-lifecycle/releases)
 
-A comprehensive product lifecycle management skill for Claude Code, covering everything from product design to technical architecture, iteration planning (TDD), task tracking, and 4-layer artifact validation. Each phase is enforced by scripts and cannot be skipped. All changes (PRD/code/test/iteration) trigger full-link cascade updates.
+> AI-collaborative product lifecycle management skill for Claude Code — from PRD to delivery, with script-enforced phase gates and 4-layer artifact validation.
 
-## Features
+## Why Product Lifecycle?
 
-- **Phase 0: Intent Recognition** - Automatically determine user requirement type
-- **Phase 1-6**: From initialization → PRD → Architecture → Test Outline → Iteration Planning
-- **Phase 7**: Iteration execution + 4-layer artifact validation + test-record + auto-generated user manual
-- **Phase 8**: Change handling (PRD/code/test failure cascade updates)
-- **Script-Enforced Workflow**: Each phase writes checkpoint files, subsequent phases verify prerequisites, cannot skip steps
-- **EARS Requirement Syntax**: PRD supports EARS pattern writing for better requirement clarity
-- **IEEE 829 Test Outline**: Test outline follows IEEE 829 essentials + BDD Given/When/Then
-- **Arc42-Lite Architecture**: Architecture documentation uses Arc42 Lite (suitable for small to medium projects)
-- **Auto-Generated User Manual**: User manual automatically generated/updated after each iteration gate passes
+Managing a product lifecycle manually is error-prone: steps get skipped, document quality varies wildly, and there is no reliable way to enforce that every phase actually completes before the next begins. Claude Code on its own can validate artifacts, but it cannot prevent you from jumping ahead or silently skipping a gate. This skill closes that gap by combining **AI-collaborative drafting** (Claude writes first drafts of PRD and Architecture while you review) with **physical enforcement** (scripts call `sys.exit(1)` when prerequisites are missing). The result is a repeatable, auditable workflow that works even on smaller models like Claude Haiku.
 
-## Installation
+## Key Features
 
-### Prerequisites
+| Feature | Description |
+|---------|-------------|
+| **AI-Collaborative Drafting** | Claude actively drafts PRD and Architecture documents; you review and refine as editor-in-chief |
+| **Compound Intent Recognition** | "Fixed a bug and noticed the requirement is unclear" — both intents recognized and executed in priority order |
+| **Script-Enforced Gates** | Physical blocking (`sys.exit(1)`) prevents skipping phases; artifact gates verify file content and timestamps |
+| **Project Type Auto-Detection** | 5 types (Web / CLI / Mobile / Data-Pipeline / Microservices) with tailored test dimensions |
+| **Adaptive Test Dimensions** | Test outline auto-adjusts dimensions based on detected project type (e.g., `[UI][API][AUTH][PERF]` for Web) |
+| **Auto-Snapshot & Diff** | Document snapshots created automatically on validation; `change prd` diffs against latest snapshot — no manual `--old` needed |
+| **Velocity Tracking** | Estimated vs actual hours per iteration with ASCII trend charts and smart next-iteration estimates |
+| **Configurable DoD** | Extend gate checks with lint commands, coverage thresholds, and manual review rules |
+| **ADR Management** | Architecture Decision Records with full lifecycle: Proposed -> Accepted -> Deprecated / Superseded |
+| **Risk Register** | Risk matrix (probability x impact) initialized from PRD risks, updated through all phases |
+| **Sprint Review** | Auto-generated review materials on gate pass — ready to share with stakeholders |
+| **Zero Dependencies** | Python standard library only — no pip install required |
 
-- Python 3.8 or higher
-- Claude Code (optional, but recommended)
+## Architecture
 
-### Install as a Claude Code Skill
-
-1. Clone this repository:
-```bash
-git clone https://github.com/wxin9/cc-skill-product-lifecycle.git
+```mermaid
+graph LR
+    P0[Phase 0<br>Intent Recognition] --> P1[Phase 1<br>Bootstrap]
+    P1 --> P2[Phase 2<br>Draft PRD]
+    P2 --> P3[Phase 3<br>Validate PRD]
+    P3 --> P4[Phase 4<br>Architecture Interview]
+    P4 --> P5[Phase 5<br>Draft Architecture]
+    P5 --> P6[Phase 6<br>Validate Architecture]
+    P6 --> P7[Phase 7<br>Test Outline]
+    P7 --> P8[Phase 8<br>Iteration Planning]
+    P8 --> P9[Phase 9<br>Execute & Gate]
+    P9 -->|Change| P10[Phase 10<br>Change Handling]
+    P10 --> P3
 ```
 
-2. Copy the skill to your Claude Code skills directory:
-```bash
-mkdir -p ~/.claude/skills
-cp -r cc-skill-product-lifecycle ~/.claude/skills/product-lifecycle
-```
+## Quick Start
 
-### Or Use Directly
-
-You can also use the scripts directly in any project directory:
+### Installation
 
 ```bash
-# Initialize a new project
-python -m scripts init --name "My Project"
+git clone https://github.com/wxin9/cc-skill-product-lifecycle.git ~/.claude/skills/product-lifecycle
 ```
 
-## Usage with Claude Code (Recommended)
+### Usage with Claude Code (Recommended)
 
-The easiest way to use this skill is through **natural language conversation** with Claude Code. After installation, you don't need to run any commands manually — just describe what you want to do:
+Just tell Claude what you want to do — no need to memorize commands:
 
-**Examples:**
+| You say | What happens |
+|---------|-------------|
+| "I want to build a task management app" | Claude starts from Phase 0 (intent recognition) and walks you through the full lifecycle |
+| "Help me draft the PRD" | Direct to Phase 2 Draft Mode — Claude generates a complete PRD draft for your review |
+| "Design the architecture" | Phase 5 Draft Mode — Claude reads PRD + interview results and generates an Arc42-Lite architecture |
+| "The requirement has changed" | Change cascade handling — auto-diffs against snapshot, generates impact report, resets downstream gates |
+| "Run the iteration gate" | 4-layer validation (artifact + task + DoD + sprint review) with physical blocking on failure |
 
-> "Help me start a new product called MyApp"
-
-> "Write the PRD for a task management tool"
-
-> "Design the technical architecture"
-
-> "Plan the iteration and start development"
-
-> "The requirement has changed, update the PRD"
-
-Claude Code will automatically:
-1. Recognize your intent (Phase 0)
-2. Execute the appropriate phase workflow
-3. Generate and validate all artifacts (PRD, Architecture, Test Outline, etc.)
-4. Manage iteration planning and execution
-5. Handle change cascading when requirements evolve
-
-**No need to memorize commands** — just talk to Claude Code naturally, and the skill takes care of the rest.
-
-## Manual Usage (Advanced)
-
-> The following sections describe how to use the scripts manually. For most users, the Claude Code conversation approach above is sufficient.
-
-### Quick Start
-
-#### 1. Initialize a New Project
+### Manual CLI Usage
 
 ```bash
-# Create a new project
-mkdir my-product && cd my-product
-
-# Initialize with product-lifecycle
-python -m scripts init --name "My Product"
+cd your-project
+alias lifecycle='python3 -m scripts'
+lifecycle init --name "My Project"
+lifecycle draft prd --description "A task management SaaS for freelancers"
+lifecycle validate --doc Docs/product/PRD.md --type prd
+lifecycle draft arch
+lifecycle validate --doc Docs/tech/ARCH.md --type arch
+lifecycle outline generate --prd Docs/product/PRD.md --arch Docs/tech/ARCH.md --output Docs/tests/MASTER_OUTLINE.md
+lifecycle plan
+lifecycle gate --iteration 1
+# ... etc
 ```
 
-#### 2. Write Your PRD
+## Command Reference
 
-```bash
-# Copy the PRD template
-cp ~/.claude/skills/product-lifecycle/references/doc_templates/prd_template.md Docs/product/PRD.md
+### Core Commands
 
-# Edit and fill in your PRD
-edit Docs/product/PRD.md
+| Command | Description |
+|---------|-------------|
+| `init` | Initialize project structure (new or existing project scanning) |
+| `draft prd` | AI-collaborative PRD drafting — Claude generates, you review |
+| `draft arch` | AI-collaborative Architecture drafting — reads PRD + interview, generates Arc42-Lite |
+| `validate` | Validate documents with scoring (types: `prd`, `arch`, `test_outline`) — auto-snapshots on pass |
+| `plan` | Generate iteration plan from PRD + ARCH with velocity-aware estimates |
+| `outline` | Test outline management (`generate` / `trace` / `iter-tests`) |
+| `gate` | Iteration gate — 4-layer validation (artifact + task + DoD + sprint review) |
+| `change` | Change cascade handling (`prd` / `code` / `test` / `iteration`) |
+| `test-record` | Record test execution results (pass/fail with resolution tracking) |
+| `manual` | Generate/update operation manual from gate results |
 
-# Validate your PRD
-python -m scripts validate --doc Docs/product/PRD.md --type prd
+### Task Management
+
+| Command | Description |
+|---------|-------------|
+| `task create` | Create a task (`--category check/dev/test/prd/arch --title "..." --iteration N`) |
+| `task update` | Update task status (`--id TASK-ID --status todo/in_progress/done/blocked`) |
+| `task list` | List tasks (filterable by `--iteration`, `--status`, `--type`) |
+| `task stats` | Show task statistics |
+
+### Advanced Commands
+
+| Command | Description |
+|---------|-------------|
+| `adr create` | Create an Architecture Decision Record (`--title --status --context --decision`) |
+| `adr list` | List all ADRs with status |
+| `adr accept` | Accept an ADR (`--num N`) |
+| `adr deprecate` | Deprecate an ADR (`--num N`) |
+| `adr supersede` | Mark ADR as superseded by another (`--num N --by M`) |
+| `velocity start` | Set estimated hours for an iteration |
+| `velocity record` | Record actual hours after gate pass |
+| `velocity report` | Show velocity trend with ASCII chart |
+| `risk init` | Initialize risk register from PRD risk section |
+| `risk add` | Add a risk (`--title --probability --impact --mitigation`) |
+| `risk list` | List risks sorted by severity |
+| `risk update` | Update risk status (`--risk-id --status --mitigation`) |
+| `dod show` | Display current Definition of Done rules |
+| `dod init` | Reset DoD to defaults |
+| `dod check` | Run DoD check for an iteration (`--iteration N`) |
+| `snapshot take` | Manually create a document snapshot (`--doc --label`) |
+| `snapshot list` | List all snapshots |
+| `snapshot diff` | Diff current document against latest snapshot |
+| `status` | Project dashboard — overall status, phase progress, task summary |
+| `step` | Step status management (delegates to `step_enforcer.py`) |
+| `pause` | Pause workflow at current point (`--reason --phase`) |
+| `resume` | Resume from pause state |
+| `cancel` | Cancel the current workflow |
+
+## Project Structure (Generated)
+
+After running `lifecycle init`, the following structure is created:
+
+```
+Docs/
+├── INDEX.md                       # Master document index
+├── product/
+│   ├── PRD.md                     # Product Requirements Document
+│   ├── requirements/              # Detailed requirement breakdowns
+│   └── user_flows/                # User flow diagrams
+├── tech/
+│   ├── ARCH.md                    # Technical Architecture (Arc42-Lite)
+│   └── components/                # Component design documents
+├── adr/                           # Architecture Decision Records
+│   ├── INDEX.md                   # ADR index
+│   └── ADR-NNN-<slug>.md          # Individual ADRs
+├── iterations/
+│   └── iter-N/
+│       ├── PLAN.md                # Iteration plan
+│       ├── test_cases.md          # Test cases for this iteration
+│       └── sprint_review.md       # Auto-generated sprint review
+├── tests/
+│   ├── MASTER_OUTLINE.md          # Master test outline (IEEE 829)
+│   └── cases/                     # Detailed test case files
+└── manual/
+    └── MANUAL.md                  # Auto-generated operation manual
+.lifecycle/
+├── config.json                    # Project configuration
+├── dod.json                       # Definition of Done rules
+├── risk_register.json             # Risk register
+├── velocity.json                  # Velocity tracking data
+├── snapshots/                     # Document snapshots (auto-created on validate)
+├── tasks.json                     # Global task registry
+└── steps/                         # Phase checkpoint files
 ```
 
-#### 3. Create Technical Architecture
+## Compatibility
 
-```bash
-# Copy the architecture template
-cp ~/.claude/skills/product-lifecycle/references/doc_templates/arch_template.md Docs/tech/ARCH.md
-
-# Edit and fill in your architecture
-edit Docs/tech/ARCH.md
-
-# Validate your architecture
-python -m scripts validate --doc Docs/tech/ARCH.md --type arch
-```
-
-#### 4. Generate Test Outline
-
-```bash
-# Generate master test outline from PRD and ARCH
-python -m scripts outline generate \
-  --prd Docs/product/PRD.md \
-  --arch Docs/tech/ARCH.md \
-  --output Docs/tests/MASTER_OUTLINE.md
-```
-
-#### 5. Plan Iterations
-
-```bash
-# Generate iteration plans
-python -m scripts plan \
-  --prd Docs/product/PRD.md \
-  --arch Docs/tech/ARCH.md
-```
-
-#### 6. Execute an Iteration
-
-```bash
-# Create tasks for iteration 1
-python -m scripts task create --category check --iteration 1 --title "Set up development environment"
-python -m scripts task create --category dev --iteration 1 --title "Implement feature F01"
-python -m scripts task create --category test --iteration 1 --title "Test feature F01" --test-case-ref TST-F01-S01
-
-# Record test results
-python -m scripts test-record --iteration 1 --test-id TST-F01-S01 --status pass
-
-# Check iteration gate
-python -m scripts gate --iteration 1
-```
-
-### Documentation
-
-- [SKILL.md](SKILL.md) - Complete skill documentation (Chinese)
-- [PRD Template](references/doc_templates/prd_template.md) - Product Requirements Document template
-- [Architecture Template](references/doc_templates/arch_template.md) - Technical Architecture document template (Arc42-Lite)
-- [Test Outline Template](references/doc_templates/test_outline_template.md) - Master Test Outline template (IEEE 829)
-
-### Command Reference
-
-```bash
-python -m scripts init              # Initialize project structure
-python -m scripts validate          # Validate PRD or ARCH document clarity
-python -m scripts task              # Task management (create / update / list / stats / gate)
-python -m scripts plan              # Generate iteration plan from PRD + ARCH
-python -m scripts outline           # Test outline management (generate / trace / iter-tests)
-python -m scripts gate              # Check iteration gate (all tasks done?)
-python -m scripts change            # Handle a change from any node (prd / code / test / iteration)
-python -m scripts status            # Show overall project status
-python -m scripts pause             # Pause work at current point
-python -m scripts resume            # Resume from pause state
-python -m scripts cancel            # Cancel the current workflow
-python -m scripts test-record       # Record test case execution results
-python -m scripts manual            # Generate/update user operations manual
-python -m scripts step              # Step status management
-```
+| Model | Support Level |
+|-------|--------------|
+| Claude Opus | Full — all features including compound intent recognition and AI-collaborative drafting |
+| Claude Sonnet | Full — recommended for most workflows |
+| Claude Haiku | Partial — basic workflow supported; complex drafting may need guidance |
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+[Apache License 2.0](LICENSE) — see [NOTICE](NOTICE) for attribution requirements.
 
-## Acknowledgments
-
-- Inspired by various product lifecycle management methodologies
-- Built for Claude Code users
-- Thanks to all contributors
-
-## Commercial Use
-
-If you use this skill for commercial purposes, please include the following attribution in your product documentation, website, or other appropriate places:
+Commercial use is permitted with proper attribution:
 
 ```
-This product uses Product-Lifecycle Skill (https://github.com/wxin9/cc-skill-product-lifecycle)
+This product uses Product Lifecycle Skill (https://github.com/wxin9/cc-skill-product-lifecycle)
 Copyright 2026 Kaiser (wxin966@gmail.com)
 Licensed under Apache License 2.0
 ```

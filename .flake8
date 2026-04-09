@@ -1,0 +1,8 @@
+[flake8]
+max-line-length = 120
+ignore = E501, W503, E303, W504
+exclude =
+    __pycache__,
+    .git,
+    .lifecycle,
+    evals

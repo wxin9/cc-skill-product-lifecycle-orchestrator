@@ -1,0 +1,41 @@
+{
+  "name": "product-lifecycle",
+  "version": "1.0.0",
+  "description": "AI 协作 + 强制门控的产品全生命周期管理",
+  "author": "Claude Code",
+  "created_at": "2026-04-04",
+  "tier": "stateful",
+  "trigger_keywords": [
+    "产品设计", "PRD", "需求文档", "技术架构", "迭代规划",
+    "product-lifecycle", "product-lifecycle", "产品管理",
+    "从零开始做产品", "迭代门控", "ADR", "velocity追踪", "DoD", "Sprint Review"
+  ],
+  "model_compatibility": {
+    "claude-opus-4-6": "full",
+    "claude-sonnet-4-6": "full",
+    "claude-haiku-4-5": "partial"
+  },
+  "improvements_over_v1": [
+    "AI 协作起草 PRD/架构（Draft Mode）",
+    "复合意图识别 + 对话式确认",
+    "项目类型自适应测试维度（5种类型）",
+    "validate 自动快照，change prd 无需 --old",
+    "迭代 velocity 追踪 + ASCII 趋势图",
+    "可配置 DoD（任务/lint/coverage/review）",
+    "ADR 专项管理（Proposed→Accepted→Deprecated）",
+    "门控通过自动生成 Sprint Review 材料",
+    "Risk Register 贯穿全生命周期"
+  ],
+  "new_commands": [
+    "draft prd", "draft arch",
+    "adr create/list/accept/deprecate",
+    "velocity start/record/report",
+    "risk list/add/update/init",
+    "dod check/init/show",
+    "snapshot take/list/diff"
+  ],
+  "dependencies": {
+    "python": ">=3.8",
+    "stdlib_only": true
+  }
+}

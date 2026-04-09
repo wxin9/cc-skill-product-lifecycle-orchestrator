@@ -6,12 +6,18 @@ Usage:
 
 Commands:
   init          Initialize project structure (new or existing)
-  validate      Validate PRD or ARCH document clarity
+  validate      Validate PRD or ARCH document clarity (+ auto-snapshot)
   task          Task management (create / update / list / stats / gate)
   plan          Generate iteration plan from PRD + ARCH
   outline       Test outline management (generate / trace / iter-tests)
-  gate          Check iteration gate (all tasks done?)
-  change        Handle a change from any node (prd / code / test / iteration)
+  gate          Check iteration gate (DoD + artifact + task + sprint_review)
+  change        Handle a change from any node (prd uses auto-snapshot diff)
+  draft         AI-assisted PRD or ARCH drafting
+  adr           Architecture Decision Record management
+  velocity      Show iteration velocity trend
+  risk          Risk Register management
+  dod           Definition of Done management
+  snapshot      Document snapshot management
   status        Show overall project status
   pause         Pause work at current point
   resume        Resume from pause state
@@ -123,6 +129,41 @@ def _init_new(project_path: Path, project_name: str) -> int:
     config_path = project_path / ".lifecycle" / "config.json"
     config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    # Initialize ADR directory
+    adr_dir = project_path / "Docs" / "adr"
+    adr_dir.mkdir(parents=True, exist_ok=True)
+    (adr_dir / "INDEX.md").write_text(
+        "# Architecture Decision Records\n\n| 编号 | 状态 | 标题 | 日期 |\n|------|------|------|------|\n\n**合计**: 0 条 ADR，0 条已接受\n",
+        encoding="utf-8"
+    )
+
+    # Initialize DoD
+    dod_file = project_path / ".lifecycle" / "dod.json"
+    if not dod_file.exists():
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        try:
+            from scripts.core.dod_checker import DoDChecker
+            DoDChecker(str(project_path)).init()
+        except Exception as e:
+            print(f"⚠ DoD 初始化异常（跳过）: {e}")
+
+    # Initialize Risk Register
+    try:
+        from scripts.core.risk_register import RiskRegister
+        rr = RiskRegister(str(project_path))
+        prd_path = project_path / "Docs" / "product" / "PRD.md"
+        rr.init_from_prd(str(prd_path.relative_to(project_path)))
+    except Exception as e:
+        # Fallback: write empty risk register
+        rr_file = project_path / ".lifecycle" / "risk_register.json"
+        if not rr_file.exists():
+            rr_file.write_text('{"risks": []}', encoding="utf-8")
+
+    # Initialize velocity tracker
+    vel_file = project_path / ".lifecycle" / "velocity.json"
+    if not vel_file.exists():
+        vel_file.write_text('{"iterations": [], "baseline_hours": null}', encoding="utf-8")
+
     # Record step
     _record_step(project_path, "project-initialized")
 
@@ -209,16 +250,32 @@ def cmd_validate(args) -> int:
     if passed:
         doc_type = result.get("doc_type", "")
         root = _find_project_root()
-        step = "prd-validated" if doc_type == "prd" else None
-        if step:
+        if doc_type == "prd":
             _record_step(root, "prd-written")
             _record_step(root, "prd-validated")
             print(f"\n✓ 步骤已记录: prd-written, prd-validated")
-            # Fix 10: auto-backup PRD snapshot for use by `change prd` without --old
+        elif doc_type == "arch":
+            _record_step(root, "arch-doc-written")
+            print(f"\n✓ 步骤已记录: arch-doc-written")
+
+        # Auto-snapshot on validation pass
+        try:
+            from scripts.core.snapshot_manager import SnapshotManager
+            sm = SnapshotManager(str(root))
+            snap = sm.take(args.doc, label=f"validated score={score}")
+            print(f"✓ 自动快照已建: {snap.name}")
+            # Also write the score file for DSL gate
+            import json as _json
+            score_key = "prd-score" if doc_type == "prd" else "arch-score"
+            score_file = root / ".lifecycle" / "steps" / f"{score_key}.json"
+            score_file.parent.mkdir(parents=True, exist_ok=True)
+            score_file.write_text(_json.dumps({"score": score, "doc": args.doc}), encoding="utf-8")
+        except Exception as e:
+            # Legacy fallback: save simple snapshot
             snapshot_path = root / ".lifecycle" / "prd_snapshot.md"
             doc_content = Path(args.doc).read_text(encoding="utf-8", errors="replace")
             snapshot_path.write_text(doc_content, encoding="utf-8")
-            print(f"✓ PRD 快照已保存: .lifecycle/prd_snapshot.md")
+            print(f"✓ PRD 快照已保存（legacy 模式）: .lifecycle/prd_snapshot.md")
 
     return 0 if passed else 1
 
@@ -416,6 +473,38 @@ def cmd_gate(args) -> int:
         _record_step(root, f"iter-{n}-gate-passed")
         print(f"✓ 步骤已记录: iter-{n}-gate-passed")
         print(f"\n可以进入迭代 {n + 1}")
+
+        # DoD check
+        try:
+            from scripts.core.dod_checker import DoDChecker
+            dod = DoDChecker(str(root))
+            dod_results = dod.run_all(iteration=n)
+            dod.print_report(dod_results)
+        except Exception as e:
+            print(f"⚠ DoD 检查异常（不影响迭代门控）: {e}")
+
+        # Velocity update prompt
+        try:
+            from scripts.core.velocity_tracker import VelocityTracker
+            vt = VelocityTracker(str(root))
+            data = vt._load()
+            current = next((i for i in data["iterations"] if i["iteration"] == n), {})
+            if current.get("actual_hours") is None:
+                print(f"\n💡 记录实际工时（用于 velocity 追踪）:")
+                print(f"   ./lifecycle velocity record --iteration {n} --hours <实际工时>")
+            else:
+                print(vt.report())
+        except Exception as e:
+            print(f"⚠ Velocity 追踪异常（跳过）: {e}")
+
+        # Sprint Review 生成
+        try:
+            from scripts.core.sprint_review_generator import SprintReviewGenerator
+            sg = SprintReviewGenerator(str(root))
+            review_path = sg.generate(n)
+            print(f"✓ Sprint Review 已生成: {review_path}")
+        except Exception as e:
+            print(f"⚠ Sprint Review 生成异常（不影响迭代门控）: {e}")
 
         # 自动更新操作手册（try/except 不影响 gate 结果）
         try:
@@ -880,6 +969,216 @@ def cmd_step(args) -> int:
 
 
 # --------------------------------------------------------------------------
+# draft command — AI-assisted PRD / ARCH drafting
+# --------------------------------------------------------------------------
+
+def cmd_draft(args) -> int:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    root = _find_project_root()
+    target = args.target  # "prd" or "arch"
+
+    if target == "prd":
+        from scripts.core.prd_drafter import print_draft_instructions, get_system_prompt, generate_draft_prompt
+        desc = args.description or ""
+        if not desc:
+            print("请用 --description 提供产品描述，例如：")
+            print('  ./lifecycle draft prd --description "一个帮助摄影师管理外拍档期的 SaaS 平台"')
+            return 1
+        print_draft_instructions(desc)
+        prompt = generate_draft_prompt(desc, str(root / ".lifecycle" / "prd_draft_prompt.md"))
+        print("=" * 60)
+        print("【Claude 起草指令（已保存到 .lifecycle/prd_draft_prompt.md）】")
+        print("=" * 60)
+        print("\n请将以下内容输入 Claude，Claude 将生成 PRD 草案：\n")
+        print(f"System: {get_system_prompt()[:200]}...\n")
+        print(f"User prompt 已保存到: .lifecycle/prd_draft_prompt.md")
+        print("\n在 Claude Code 中，Claude 会自动读取此提示词并生成草案。")
+        print("草案生成后，请将内容保存到 Docs/product/PRD.md 并运行 validate。")
+        # Write a flag so SKILL.md can detect draft mode is active
+        (root / ".lifecycle" / ".draft-prd-pending").write_text(desc, encoding="utf-8")
+        return 0
+
+    elif target == "arch":
+        from scripts.core.arch_drafter import print_draft_instructions, get_system_prompt, generate_draft_prompt
+        print_draft_instructions(str(root))
+        prompt = generate_draft_prompt(str(root))
+        prompt_file = root / ".lifecycle" / "arch_draft_prompt.md"
+        prompt_file.write_text(f"# Arch Draft Prompt\n\n{prompt}", encoding="utf-8")
+        print(f"Arch draft prompt 已保存到: .lifecycle/arch_draft_prompt.md")
+        (root / ".lifecycle" / ".draft-arch-pending").write_text("1", encoding="utf-8")
+        return 0
+
+    else:
+        print(f"未知目标: {target}。可选: prd / arch")
+        return 1
+
+
+# --------------------------------------------------------------------------
+# adr command — Architecture Decision Record management
+# --------------------------------------------------------------------------
+
+def cmd_adr(args) -> int:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    root = _find_project_root()
+    from scripts.core.adr_manager import ADRManager
+    mgr = ADRManager(str(root))
+
+    sub = args.adr_sub
+    if sub == "create":
+        mgr.create(
+            title=args.title,
+            status=args.status or "proposed",
+            context=args.context or "（待填写）",
+            decision=args.decision or "（待填写）",
+            deciders=args.deciders or "团队",
+        )
+    elif sub == "list":
+        mgr.print_table()
+    elif sub == "accept":
+        mgr.update_status(args.num, "accepted")
+    elif sub == "deprecate":
+        mgr.update_status(args.num, "deprecated")
+    elif sub == "supersede":
+        mgr.update_status(args.num, "superseded", superseded_by=args.by)
+    else:
+        print(f"未知子命令: {sub}。可选: create / list / accept / deprecate / supersede")
+        return 1
+    return 0
+
+
+# --------------------------------------------------------------------------
+# velocity command — iteration velocity tracking
+# --------------------------------------------------------------------------
+
+def cmd_velocity(args) -> int:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    root = _find_project_root()
+    from scripts.core.velocity_tracker import VelocityTracker
+    vt = VelocityTracker(str(root))
+
+    sub = args.velocity_sub
+    if sub == "start":
+        vt.start_iteration(args.iteration, args.hours)
+    elif sub == "record":
+        vt.complete_iteration(args.iteration, args.hours)
+        print(vt.report())
+    elif sub == "report" or sub is None:
+        print(vt.report())
+        print(f"下一迭代建议工时: {vt.suggest_next()}h")
+    else:
+        print(f"未知子命令: {sub}。可选: start / record / report")
+        return 1
+    return 0
+
+
+# --------------------------------------------------------------------------
+# risk command — Risk Register management
+# --------------------------------------------------------------------------
+
+def cmd_risk(args) -> int:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    root = _find_project_root()
+    from scripts.core.risk_register import RiskRegister
+    rr = RiskRegister(str(root))
+
+    sub = args.risk_sub
+    if sub == "list":
+        rr.print_matrix()
+    elif sub == "add":
+        rr.add(
+            title=args.title,
+            probability=args.probability or "medium",
+            impact=args.impact or "medium",
+            mitigation=args.mitigation or "",
+        )
+    elif sub == "update":
+        kwargs = {}
+        if args.status:
+            kwargs["status"] = args.status
+        if args.mitigation:
+            kwargs["mitigation"] = args.mitigation
+        if args.probability:
+            kwargs["probability"] = args.probability
+        if args.impact:
+            kwargs["impact"] = args.impact
+        rr.update(args.risk_id, **kwargs)
+    elif sub == "init":
+        prd_path = args.prd or "Docs/product/PRD.md"
+        rr.init_from_prd(prd_path)
+    else:
+        print(f"未知子命令: {sub}。可选: list / add / update / init")
+        return 1
+    return 0
+
+
+# --------------------------------------------------------------------------
+# dod command — Definition of Done management
+# --------------------------------------------------------------------------
+
+def cmd_dod(args) -> int:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    root = _find_project_root()
+    from scripts.core.dod_checker import DoDChecker
+    checker = DoDChecker(str(root))
+
+    sub = args.dod_sub
+    if sub == "check":
+        results = checker.run_all(iteration=args.iteration)
+        passed = checker.print_report(results)
+        return 0 if passed else 1
+    elif sub == "init":
+        checker.init()
+        print("DoD 规则已初始化（可编辑 .lifecycle/dod.json 自定义规则）")
+    elif sub == "show":
+        rules = checker.load_rules()
+        print("\n=== 当前 DoD 规则 ===")
+        for i, r in enumerate(rules["rules"], 1):
+            print(f"  {i}. [{r['type']:12}] {r.get('description', r['type'])}")
+            if r.get("cmd"):
+                print(f"          cmd: {r['cmd']}")
+        print()
+    else:
+        print(f"未知子命令: {sub}。可选: check / init / show")
+        return 1
+    return 0
+
+
+# --------------------------------------------------------------------------
+# snapshot command — document snapshot management
+# --------------------------------------------------------------------------
+
+def cmd_snapshot(args) -> int:
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    root = _find_project_root()
+    from scripts.core.snapshot_manager import SnapshotManager
+    sm = SnapshotManager(str(root))
+
+    sub = args.snapshot_sub
+    if sub == "take":
+        sm.take(args.doc, label=args.label or "manual")
+    elif sub == "list":
+        snaps = sm.list_snapshots(args.doc)
+        if not snaps:
+            print("(无快照记录)")
+            return 0
+        print(f"\n{'文档':>40}  {'时间':>17}  {'大小':>8}  标签")
+        print("-" * 80)
+        for s in snaps[:20]:
+            print(f"{s['source']:>40}  {s['timestamp']:>17}  {s['size']:>6}B  {s['label']}")
+        print()
+    elif sub == "diff":
+        if not args.doc:
+            print("请用 --doc 指定文档路径")
+            return 1
+        diff = sm.diff(args.doc)
+        print(diff)
+    else:
+        print(f"未知子命令: {sub}。可选: take / list / diff")
+        return 1
+    return 0
+
+
+# --------------------------------------------------------------------------
 # Internal helpers
 # --------------------------------------------------------------------------
 
@@ -1012,6 +1311,52 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("step_args", nargs=argparse.REMAINDER,
                    help="传给 step_enforcer 的参数，如 status / record <step-id> / require <step-id>")
 
+    # draft
+    p = sub.add_parser("draft", help="AI 协作起草 PRD 或架构文档")
+    p.add_argument("target", choices=["prd", "arch"], help="起草目标: prd / arch")
+    p.add_argument("--description", help="产品描述（draft prd 时必填）")
+
+    # adr
+    p = sub.add_parser("adr", help="架构决策记录（ADR）管理")
+    p.add_argument("adr_sub", choices=["create", "list", "accept", "deprecate", "supersede"],
+                   help="子命令")
+    p.add_argument("--title", help="ADR 标题（create 时必填）")
+    p.add_argument("--status", default="proposed", help="初始状态（默认: proposed）")
+    p.add_argument("--context", help="背景说明")
+    p.add_argument("--decision", help="决策内容")
+    p.add_argument("--deciders", help="决策者")
+    p.add_argument("--num", type=int, help="ADR 编号（accept/deprecate/supersede 时必填）")
+    p.add_argument("--by", type=int, help="被哪个 ADR 取代（supersede 时使用）")
+
+    # velocity
+    p = sub.add_parser("velocity", help="迭代速度追踪")
+    p.add_argument("velocity_sub", nargs="?", choices=["start", "record", "report"],
+                   default="report", help="子命令（默认: report）")
+    p.add_argument("--iteration", type=int, help="迭代编号")
+    p.add_argument("--hours", type=float, help="工时（start: 估算工时 / record: 实际工时）")
+
+    # risk
+    p = sub.add_parser("risk", help="风险登记册管理")
+    p.add_argument("risk_sub", choices=["list", "add", "update", "init"], help="子命令")
+    p.add_argument("--title", help="风险标题（add 时必填）")
+    p.add_argument("--probability", choices=["high", "medium", "low"], help="概率")
+    p.add_argument("--impact", choices=["high", "medium", "low"], help="影响")
+    p.add_argument("--mitigation", help="缓解措施")
+    p.add_argument("--status", help="状态（update 时使用）")
+    p.add_argument("--risk-id", dest="risk_id", help="风险 ID（update 时必填）")
+    p.add_argument("--prd", help="PRD 路径（init 时使用，默认 Docs/product/PRD.md）")
+
+    # dod
+    p = sub.add_parser("dod", help="Definition of Done 管理")
+    p.add_argument("dod_sub", choices=["check", "init", "show"], help="子命令")
+    p.add_argument("--iteration", type=int, help="迭代编号（check 时使用）")
+
+    # snapshot
+    p = sub.add_parser("snapshot", help="文档快照管理")
+    p.add_argument("snapshot_sub", choices=["take", "list", "diff"], help="子命令")
+    p.add_argument("--doc", help="文档路径（如 Docs/product/PRD.md）")
+    p.add_argument("--label", help="快照标签")
+
     return parser
 
 
@@ -1034,6 +1379,13 @@ def main() -> int:
         "resume": cmd_resume,
         "cancel": cmd_cancel,
         "step": cmd_step,
+        # PRO commands
+        "draft": cmd_draft,
+        "adr": cmd_adr,
+        "velocity": cmd_velocity,
+        "risk": cmd_risk,
+        "dod": cmd_dod,
+        "snapshot": cmd_snapshot,
     }
 
     if args.command is None:

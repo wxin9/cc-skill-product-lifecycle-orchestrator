@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install flake8
+        run: pip install flake8
+      - name: Lint with flake8
+        run: flake8 scripts/ --max-line-length=120 --ignore=E501,W503
+
+  import-check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.10', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Verify module imports
+        run: |
+          python -c "import scripts"
+          python -c "from scripts.core import doc_validator, artifact_validator, change_detector"
+          python -c "from scripts.core import intent_classifier, iteration_planner, task_registry"
+          python -c "from scripts.core import prd_drafter, arch_drafter, dod_checker"
+          python -c "from scripts.core import adr_manager, snapshot_manager, velocity_tracker"
+          python -c "from scripts.core import risk_register, sprint_review_generator"
+          python -c "from scripts.data import schemas"
+
+  eval-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate evals.json
+        run: |
+          python -c "
+          import json, sys
+          data = json.load(open('evals/evals.json'))
+          assert isinstance(data, list), 'evals.json must be a list'
+          for i, e in enumerate(data):
+              assert 'prompt' in e, f'eval {i} missing prompt'
+          print(f'✓ {len(data)} evals validated')
+          "
