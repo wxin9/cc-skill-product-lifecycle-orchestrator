@@ -34,7 +34,6 @@ env/
 
 # Project lifecycle specific
 .lifecycle/
-codemaker_config.json
 
 # OS
 .DS_Store
