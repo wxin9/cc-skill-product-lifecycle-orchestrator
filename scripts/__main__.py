@@ -408,31 +408,181 @@ def cmd_outline(args) -> int:
         outline = generate_outline(prd, arch if Path(arch).exists() else None)
         write_outline(outline, output)
         _record_step(root, "test-outline-written")
-        print(f"✓ 主测试大纲已生成: {output}")
+        print(f"✓ MASTER_OUTLINE.md written to {output}")
         print(f"  功能点: {len(outline['entries'])}  测试场景: {outline['total_scenarios']}")
+        graph_path = os.path.join(root, ".lifecycle", "test_graph.json")
+        if os.path.exists(graph_path):
+            print(f"✓ test_graph.json written to {graph_path}")
 
     elif args.outline_cmd == "trace":
-        outline = args.outline or str(root / "Docs/tests/MASTER_OUTLINE.md")
-        feature_ids = [f.strip() for f in args.features.split(",")]
-        affected = trace_impact(feature_ids, outline)
-        if affected:
-            print(f"受影响的测试用例 ({len(affected)}):")
-            for t in affected:
-                print(f"  - {t}")
-        else:
-            print("未找到受影响的测试用例")
+        graph_path = os.path.join(root, ".lifecycle", "test_graph.json")
+        if not os.path.exists(graph_path):
+            print("Error: test_graph.json not found. Run 'outline generate' first.")
+            return
+        from .core.test_graph import TestGraph
+        graph = TestGraph.load(graph_path)
+
+        changed_features = args.features.split(",") if args.features else []
+        impact_results = graph.traverse_impact(changed_features, direction="both")
+
+        print(f"=== 影响分析结果 ===")
+        print(f"变更功能: {', '.join(changed_features)}")
+        print(f"影响范围 ({len(impact_results)} 个节点):")
+        for node_id, distance, priority in impact_results:
+            node = graph.get_node(node_id)
+            print(f"  [{priority}] {node_id} ({node.get('name', '')}) — 距离: {distance}")
 
     elif args.outline_cmd == "iter-tests":
         outline_path = args.outline or str(root / "Docs/tests/MASTER_OUTLINE.md")
         feature_ids = [f.strip() for f in args.features.split(",")]
         output = args.output or str(root / f"Docs/iterations/iter-{args.iteration}/test_cases.md")
         iter_plan = {"feature_ids": feature_ids}
-        outline_data = {"entries": [], "version": "1.0", "generated_at": "", "prd_version": "", "arch_version": "", "total_scenarios": 0}
+
+        # Load outline data from test_graph.json or MASTER_OUTLINE.md
+        graph_path = os.path.join(root, ".lifecycle", "test_graph.json")
+        outline_path = os.path.join(root, "Docs", "tests", "MASTER_OUTLINE.md")
+
+        if os.path.exists(graph_path):
+            from .core.test_graph import TestGraph
+            graph = TestGraph.load(graph_path)
+            outline_data = graph.to_legacy_outline()
+        elif os.path.exists(outline_path):
+            # Fallback: regenerate from PRD
+            prd_path = args.prd or os.path.join(root, "Docs", "PRD.md")
+            arch_path = args.arch or os.path.join(root, "Docs", "ARCH.md")
+            if os.path.exists(prd_path):
+                outline_data, _ = generate_outline(prd_path, arch_path)
+            else:
+                print("Error: No PRD found. Cannot generate outline.")
+                return
+        else:
+            print("Error: No test outline found. Run 'outline generate' first.")
+            return
+
         cases = generate_iteration_tests(iter_plan, outline_data, args.iteration)
         write_iteration_tests(cases, output, args.iteration)
         n = args.iteration
         _record_step(root, f"iter-{n}-tests-written")
         print(f"✓ 迭代 {n} 测试用例已生成: {output}  ({len(cases)} 个)")
+
+    elif args.outline_cmd == "dependency-review":
+        from .core.test_graph import TestGraph
+        graph_path = args.graph
+        if not os.path.exists(graph_path):
+            # Try relative to project root
+            graph_path = os.path.join(root, ".lifecycle", "test_graph.json")
+        if not os.path.exists(graph_path):
+            print("Error: test_graph.json not found. Run 'outline generate' first.")
+            return
+        graph = TestGraph.load(graph_path)
+
+        # Find all feature nodes
+        features = graph.find_nodes(node_type="feature")
+        if not features:
+            print("No feature nodes found in test graph.")
+            return
+
+        print("=" * 60)
+        print("  Dependency Review — 依赖审核报告")
+        print("=" * 60)
+
+        missing_deps = []
+        for feat in sorted(features, key=lambda f: f.get("node_id", "")):
+            fid = feat.get("node_id", "")
+            fname = feat.get("name", "")
+            deps = feat.get("dependencies", {})
+            upstream = deps.get("upstream_nodes", [])
+            downstream = deps.get("downstream_nodes", [])
+            apis = deps.get("apis", [])
+            entities = deps.get("data_entities", [])
+            state_pre = deps.get("state_pre", [])
+
+            print(f"\n  {fid} — {fname}")
+            print(f"    Upstream:   {', '.join(upstream) if upstream else '(none)'}")
+            print(f"    Downstream: {', '.join(downstream) if downstream else '(none)'}")
+            print(f"    APIs:       {', '.join(apis) if apis else '(none)'}")
+            print(f"    Entities:   {', '.join(entities) if entities else '(none)'}")
+
+            # Flag missing dependencies
+            has_any = upstream or downstream or apis or entities
+            if not has_any:
+                missing_deps.append(fid)
+                print(f"    ⚠ No dependencies declared (is this a root feature?)")
+            else:
+                print(f"    ✓ Dependencies declared")
+
+        print(f"\n{'=' * 60}")
+        print(f"  Summary: {len(features)} features, {len(missing_deps)} missing dependencies")
+        if missing_deps:
+            print(f"  Missing: {', '.join(missing_deps)}")
+        print("=" * 60)
+        print("\n  Please review and confirm/correct the dependency declarations.")
+
+    elif args.outline_cmd == "migrate":
+        outline_path = args.outline
+        if not os.path.exists(outline_path):
+            outline_path = os.path.join(root, outline_path)
+        if not os.path.exists(outline_path):
+            print(f"Error: {outline_path} not found.")
+            return 1
+
+        # Parse old MASTER_OUTLINE.md and build TestGraph
+        # This is a best-effort migration - some info may be lost
+        from .core.test_graph import TestGraph
+        graph = TestGraph()
+
+        with open(outline_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # Extract features (### F01 -- Name pattern)
+        import re
+        feat_pattern = r'### (F\d+)\s*--\s*(.+?)$'
+        features = re.findall(feat_pattern, content, re.MULTILINE)
+
+        for feat_id, feat_name in features:
+            graph.add_node({
+                "node_id": feat_id,
+                "node_type": "feature",
+                "name": feat_name.strip(),
+                "description": "",
+                "priority": "P1",
+                "tags": [],
+                "children": [],
+                "dependencies": {"upstream_nodes": [], "downstream_nodes": [], "apis": [], "data_entities": [], "state_pre": [], "state_post": []},
+                "business_rules": [],
+            })
+
+        # Extract scenarios (TST-XXX: Description pattern)
+        sc_pattern = r'(TST-\d+):\s*(.+?)$'
+        scenarios = re.findall(sc_pattern, content, re.MULTILINE)
+
+        for sc_id, sc_desc in scenarios:
+            # Try to match to a feature (simplified heuristic)
+            parent_feat = f"F{sc_id.split('-')[1][:2]}" if '-' in sc_id else "F01"
+            graph.add_node({
+                "node_id": sc_id,
+                "node_type": "scenario",
+                "name": sc_desc.strip(),
+                "description": sc_desc.strip(),
+                "priority": "P1",
+                "tags": [],
+                "children": [],
+                "dependencies": {"upstream_nodes": [], "downstream_nodes": [], "apis": [], "data_entities": [], "state_pre": [], "state_post": []},
+                "business_rules": [],
+                "steps": [],
+                "expected": "",
+                "e2e": False,
+                "layer_entry": "api",
+                "dimension": "",
+            }, parent_id=parent_feat)
+
+        # Save
+        output_path = args.output
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        graph.save(output_path)
+        print(f"✓ Migrated {len(features)} features and {len(scenarios)} scenarios")
+        print(f"✓ test_graph.json saved to {output_path}")
+        print(f"⚠ Note: Some metadata (dependencies, steps, etc.) may need manual review")
 
     return 0
 
@@ -557,10 +707,14 @@ def cmd_change(args) -> int:
                 print("  请先运行: ./lifecycle validate --doc Docs/product/PRD.md")
                 print("  或手动指定: ./lifecycle change prd --old <旧版路径>")
                 return 1
-        outline = str(root / "Docs/tests/MASTER_OUTLINE.md")
+
+        test_graph_path = os.path.join(root, ".lifecycle", "test_graph.json")
+        if not os.path.exists(test_graph_path):
+            print("Error: test_graph.json not found. Run 'outline generate' first.")
+            return 1
 
         change_report = detect_prd_diff(old_prd, new_prd)
-        impact = cascade_impact(change_report, outline)
+        impact = cascade_impact(change_report, test_graph_path)
 
         # Write impact report
         impact_path = root / ".lifecycle" / "CHANGE_IMPACT.md"
@@ -590,8 +744,13 @@ def cmd_change(args) -> int:
 
     elif node == "code":
         components = [c.strip() for c in args.components.split(",")]
-        outline = str(root / "Docs/tests/MASTER_OUTLINE.md")
-        impact = cascade_from_code_change(components, outline)
+
+        test_graph_path = os.path.join(root, ".lifecycle", "test_graph.json")
+        if not os.path.exists(test_graph_path):
+            print("Error: test_graph.json not found. Run 'outline generate' first.")
+            return 1
+
+        impact = cascade_from_code_change(components, test_graph_path)
 
         # Create test tasks for affected tests
         config = _load_config(root)
@@ -1261,6 +1420,11 @@ def build_parser() -> argparse.ArgumentParser:
     og = os_.add_parser("generate"); og.add_argument("--prd"); og.add_argument("--arch"); og.add_argument("--output")
     ot = os_.add_parser("trace"); ot.add_argument("--outline"); ot.add_argument("--features", required=True, help="逗号分隔的功能 ID，如 F01,F02")
     oi = os_.add_parser("iter-tests"); oi.add_argument("--outline"); oi.add_argument("--features", required=True); oi.add_argument("--iteration", required=True, type=int); oi.add_argument("--output")
+    dr = os_.add_parser("dependency-review", help="Review dependency declarations in test graph")
+    dr.add_argument("--graph", default=".lifecycle/test_graph.json", help="Path to test_graph.json")
+    mgr = os_.add_parser("migrate", help="Migrate old MASTER_OUTLINE.md to test_graph.json format")
+    mgr.add_argument("--outline", default="Docs/tests/MASTER_OUTLINE.md", help="Path to old outline")
+    mgr.add_argument("--output", default=".lifecycle/test_graph.json", help="Output path for test_graph.json")
 
     # gate
     p = sub.add_parser("gate", help="检查迭代门控")

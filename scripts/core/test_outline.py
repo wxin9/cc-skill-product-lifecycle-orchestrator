@@ -126,190 +126,84 @@ def _extract_arch_context(arch_path: Optional[str]) -> dict:
     return ctx
 
 
-def _generate_scenarios_for_feature(
-    feature: dict,
-    has_ui: bool = True,
-    arch_context: Optional[dict] = None,
-) -> List[dict]:
-    """
-    Generate comprehensive test scenarios for a feature.
+def _adjust_for_boundary(steps, feature_name):
+    """Adjust steps for boundary testing."""
+    result = steps[:]
+    if len(result) > 1:
+        result[0] = result[0].replace("有效", "边界值").replace("正常", "边界值")
+    return result
 
-    Coverage dimensions:
-      1. UI E2E happy path (if has_ui)
-      2. UI E2E error path (if has_ui)
-      3. Backend API happy path
-      4. Backend API error/validation path
-      5. Data integrity / persistence
-      6. Async task completion (if arch has async)
-      7. External dependency failure (if arch has external deps)
-      8. File I/O edge cases (if feature involves file operations)
-      9. Permission/auth (if feature name suggests it)
-    """
-    fname = feature["feature_name"]
-    desc = feature.get("description", "")
-    ctx = arch_context or {"has_ui": has_ui, "has_async_tasks": False,
-                           "has_external_deps": False, "has_file_io": False, "has_db": False}
+
+def _adjust_for_error(steps, feature_name):
+    """Adjust steps for error testing."""
+    result = steps[:]
+    if len(result) > 1:
+        result[0] = result[0].replace("有效", "无效/异常").replace("正常", "异常")
+    return result
+
+
+def _adjust_for_data(steps, feature_name):
+    """Adjust steps for data anomaly testing."""
+    result = steps[:]
+    if len(result) > 1:
+        result[0] = result[0].replace("输入", "输入异常数据").replace("有效数据", "脏数据/空数据")
+    return result
+
+
+def _generate_scenarios_for_feature(feature, project_type="web", arch_context=None):
+    """Generate test scenarios for a feature using dimension-driven approach."""
+    from .project_type_detector import get_dimension_generators
+
+    dimension_configs = get_dimension_generators(project_type)
     scenarios = []
+
+    VARIANT_LABELS = {"happy": "正向", "boundary": "边界", "error": "异常", "data": "数据异常"}
+
+    feature_name = feature.get("feature_name", feature.get("name", ""))
+    feature_desc = feature.get("description", "")
+    feature_text = f"{feature_name} {feature_desc}".lower()
+
     sid = 0
 
-    # ── Dimension 1: UI E2E Happy Path ──
-    if ctx.get("has_ui", has_ui):
-        sid += 1
-        scenarios.append({
-            "id": f"S{sid:02d}",
-            "description": f"[UI] 正常使用「{fname}」",
-            "steps": [
-                f"(Given) 用户已登录并进入「{fname}」功能页面",
-                "(When) 输入有效数据并提交",
-                "(When) 系统处理请求并返回结果",
-                "(Then) 页面展示成功反馈",
-                "(Then) 数据在页面上正确显示",
-            ],
-            "expected": f"「{fname}」功能正常运行，界面反馈及时，数据正确展示",
-            "e2e": True,
-            "layer_entry": "ui",
-        })
+    for dim_config in dimension_configs:
+        tag = dim_config["dimension_tag"]
 
-    # ── Dimension 2: UI E2E Error Path ──
-    if ctx.get("has_ui", has_ui):
-        sid += 1
-        scenarios.append({
-            "id": f"S{sid:02d}",
-            "description": f"[UI] 「{fname}」异常输入处理",
-            "steps": [
-                f"(Given) 用户在「{fname}」页面",
-                "(When) 输入无效或缺失数据并提交",
-                "(Then) 前端校验拦截或后端返回错误",
-                "(Then) 页面显示清晰错误提示，不丢失已填内容",
-            ],
-            "expected": "系统显示清晰错误提示，不造成数据损坏，用户可修正后重试",
-            "e2e": True,
-            "layer_entry": "ui",
-        })
+        # Check conditional_keywords: if non-empty, feature must match at least one
+        cond_kw = dim_config.get("conditional_keywords", [])
+        if cond_kw and not any(kw.lower() in feature_text for kw in cond_kw):
+            continue
 
-    # ── Dimension 3: Backend API Happy Path ──
-    sid += 1
-    scenarios.append({
-        "id": f"S{sid:02d}",
-        "description": f"[API] 「{fname}」接口正常调用",
-        "steps": [
-            "(Given) 系统已启动，测试数据已准备",
-            f"(When) 发送有效请求到「{fname}」相关 API 端点",
-            "(Then) 返回 200/201 状态码和正确响应体",
-            "(Then) 数据库中记录正确创建/更新",
-        ],
-        "expected": "API 返回正确响应，数据持久化成功",
-        "e2e": True,
-        "layer_entry": "api",
-    })
-
-    # ── Dimension 4: Backend API Validation ──
-    sid += 1
-    scenarios.append({
-        "id": f"S{sid:02d}",
-        "description": f"[API] 「{fname}」接口参数校验",
-        "steps": [
-            "(Given) 系统已启动",
-            "(When) 发送缺失必填字段或非法参数的请求",
-            "(Then) 返回 400/422 状态码和错误详情",
-            "(Then) 数据库无脏数据写入",
-        ],
-        "expected": "API 返回 4xx 错误码和可理解的错误信息，不产生部分写入",
-        "e2e": True,
-        "layer_entry": "api",
-    })
-
-    # ── Dimension 5: Data Integrity ──
-    if ctx.get("has_db", True):
-        sid += 1
-        scenarios.append({
-            "id": f"S{sid:02d}",
-            "description": f"[DATA] 「{fname}」数据完整性",
-            "steps": [
-                "(Given) 系统有已存在的相关数据",
-                f"(When) 执行「{fname}」的创建/更新/删除操作",
-                "(Then) 验证关联数据的一致性（外键、级联）",
-                "(Then) 验证并发操作不产生数据冲突",
-            ],
-            "expected": "数据操作保持引用完整性，无孤立记录或级联异常",
-            "e2e": False,
-            "layer_entry": "api",
-        })
-
-    # ── Dimension 6: Async Task ──
-    if ctx.get("has_async_tasks"):
-        async_keywords = r"(验证|分析|生成|报告|推送|同步|批量|连通|检查|导入|导出|计算)"
-        if re.search(async_keywords, fname + desc, re.IGNORECASE):
+        # Generate one scenario per defensive variant
+        for variant in dim_config.get("defensive_variants", ["happy"]):
             sid += 1
-            scenarios.append({
+            variant_label = VARIANT_LABELS.get(variant, variant)
+            scenario = {
                 "id": f"S{sid:02d}",
-                "description": f"[ASYNC] 「{fname}」异步任务完成与超时",
-                "steps": [
-                    f"(Given) 用户触发「{fname}」的异步操作",
-                    "(When) 任务提交到队列并开始执行",
-                    "(Then) 轮询/回调显示任务进度",
-                    "(Then) 任务完成后结果正确写入数据库",
-                    "(Then) 验证任务超时时的友好提示",
-                ],
-                "expected": "异步任务正常完成并回写结果；超时时给出明确反馈，不进入死循环",
-                "e2e": True,
-                "layer_entry": "api",
-            })
+                "dimension": tag,
+                "variant": variant,
+                "description": dim_config["description_template"].format(
+                    variant_label=variant_label, feature_name=feature_name
+                ),
+                "steps": [s.format(feature_name=feature_name) for s in dim_config["steps_template"]],
+                "expected": dim_config["expected_template"].format(feature_name=feature_name),
+                "e2e": dim_config.get("e2e", False) and variant == "happy",
+                "layer_entry": dim_config.get("layer_entry", "api"),
+                "preconditions": [],
+                "feature_id": feature.get("feature_id", feature.get("id", "")),
+            }
 
-    # ── Dimension 7: External Dependency Failure ──
-    if ctx.get("has_external_deps"):
-        ext_keywords = r"(推送|对接|同步|上报|平台|外部|第三方|MCP|知识库)"
-        if re.search(ext_keywords, fname + desc, re.IGNORECASE):
-            sid += 1
-            scenarios.append({
-                "id": f"S{sid:02d}",
-                "description": f"[EXT] 「{fname}」外部服务不可用时的降级",
-                "steps": [
-                    "(Given) 外部依赖服务不可达或返回错误",
-                    f"(When) 用户触发「{fname}」中依赖外部服务的操作",
-                    "(Then) 系统捕获异常并给出友好提示",
-                    "(Then) 本地数据不受影响，操作可重试",
-                ],
-                "expected": "外部服务故障时系统优雅降级，不崩溃，不丢数据",
-                "e2e": True,
-                "layer_entry": "api",
-            })
+            # Adjust steps/expected based on variant type
+            if variant == "boundary":
+                scenario["steps"] = _adjust_for_boundary(scenario["steps"], feature_name)
+                scenario["expected"] = f"系统正确处理边界情况，{feature_name}返回预期结果"
+            elif variant == "error":
+                scenario["steps"] = _adjust_for_error(scenario["steps"], feature_name)
+                scenario["expected"] = f"系统正确处理异常输入，{feature_name}给出明确错误提示"
+            elif variant == "data":
+                scenario["steps"] = _adjust_for_data(scenario["steps"], feature_name)
+                scenario["expected"] = f"系统正确处理异常数据，{feature_name}数据完整性得到保障"
 
-    # ── Dimension 8: File I/O ──
-    if ctx.get("has_file_io"):
-        file_keywords = r"(导入|导出|上传|下载|报告|Excel|文件|CSV|YAML|JSON)"
-        if re.search(file_keywords, fname + desc, re.IGNORECASE):
-            sid += 1
-            scenarios.append({
-                "id": f"S{sid:02d}",
-                "description": f"[FILE] 「{fname}」文件操作边界",
-                "steps": [
-                    "(Given) 准备各种格式/大小的测试文件",
-                    f"(When) 使用「{fname}」处理空文件/超大文件/错误格式文件",
-                    "(Then) 空文件和错误格式返回清晰错误",
-                    "(Then) 正常文件处理结果正确",
-                ],
-                "expected": "文件操作对边界情况有明确的错误处理，中文文件名不乱码",
-                "e2e": True,
-                "layer_entry": "api",
-            })
-
-    # ── Dimension 9: Permission / Auth ──
-    if re.search(r"(权限|角色|登录|用户|授权|管理员|认证|auth)", fname + desc, re.IGNORECASE):
-        sid += 1
-        scenarios.append({
-            "id": f"S{sid:02d}",
-            "description": f"[AUTH] 「{fname}」权限控制",
-            "steps": [
-                "(Given) 以无权限或未认证用户身份发起请求",
-                f"(When) 访问「{fname}」的受保护资源",
-                "(Then) 系统返回 401/403 并拒绝访问",
-                "(Then) 无敏感数据泄露",
-            ],
-            "expected": "系统拒绝无权限访问并返回适当错误码",
-            "e2e": True,
-            "layer_entry": "api",
-        })
+            scenarios.append(scenario)
 
     return scenarios
 
@@ -323,28 +217,153 @@ def generate_outline(
     arch_path: Optional[str] = None,
     prd_version: str = "1.0",
     arch_version: str = "1.0",
-) -> dict:
+) -> tuple:
     """
     Generate a MasterOutline from PRD (and optionally ARCH).
 
-    Uses architecture context to generate multi-dimensional test scenarios:
-    UI E2E, Backend API, Data Integrity, Async Tasks, External Deps, File I/O, Auth.
-
-    Returns MasterOutline dict.
+    Uses dimension-driven scenario generation based on detected project type.
+    Returns (legacy_dict, test_graph) tuple.
     """
-    features = _extract_prd_features(prd_path)
-    arch_ctx = _extract_arch_context(arch_path)
+    from .project_type_detector import detect_from_arch
+    from .test_graph import TestGraph
 
-    entries: List[dict] = []
+    # Detect project type
+    project_type = "web"  # default
+    if arch_path and Path(arch_path).exists():
+        try:
+            project_type = detect_from_arch(arch_path)
+        except Exception:
+            pass
+
+    # Extract features from PRD
+    features = _extract_prd_features(prd_path)
+
+    # Generate scenarios using dimension-driven approach
+    all_scenarios = {}
+    for feat in features:
+        feat_id = feat.get("feature_id", "")
+        feat_scenarios = _generate_scenarios_for_feature(feat, project_type=project_type)
+        all_scenarios[feat_id] = feat_scenarios
+
+    # Build TestGraph
+    graph = _build_test_graph(features, all_scenarios, project_type, prd_version, arch_version, arch_path)
+
+    # Build legacy MasterOutline dict (for backward compat output)
+    legacy = _build_legacy_outline(features, all_scenarios, project_type, prd_version, arch_version)
+
+    return legacy, graph
+
+
+def _build_test_graph(features, all_scenarios, project_type, prd_version, arch_version, arch_path=None):
+    """Build a TestGraph from features and scenarios."""
+    from .test_graph import TestGraph
+    from .dependency_extractor import extract_apis, extract_data_entities, infer_feature_dependencies
+
+    graph = TestGraph()
+    graph.project_type = project_type
+    graph.prd_version = prd_version
+    graph.arch_version = arch_version
+    graph._generated_at = datetime.now(timezone.utc).isoformat()
+
+    # Collect dimensions used
+    dims_used = set()
+
+    # Extract dependencies from ARCH.md if available
+    arch_apis = []
+    arch_entities = []
+    if arch_path and Path(arch_path).exists():
+        with open(arch_path, 'r', encoding='utf-8') as f:
+            arch_text = f.read()
+        arch_apis = extract_apis(arch_text)
+        arch_entities = extract_data_entities(arch_text)
+        graph.global_apis = arch_apis
+        graph.global_entities = arch_entities
+
+    # Add feature nodes
+    for feat in features:
+        feat_id = feat.get("feature_id", "")
+        feat_node = {
+            "node_id": feat_id,
+            "node_type": "feature",
+            "name": feat.get("feature_name", ""),
+            "description": feat.get("description", ""),
+            "priority": "P1",
+            "tags": [],
+            "children": [],
+            "dependencies": {
+                "upstream_nodes": [],
+                "downstream_nodes": [],
+                "apis": [],
+                "data_entities": [],
+                "state_pre": [],
+                "state_post": [],
+            },
+            "business_rules": [],
+        }
+        graph.add_node(feat_node)
+
+        # Add scenario children
+        for i, sc in enumerate(all_scenarios.get(feat_id, []), 1):
+            sc_id = f"{feat_id}-S{i:02d}"
+            dim = sc.get("dimension", "")
+            dims_used.add(dim)
+            sc_node = {
+                "node_id": sc_id,
+                "node_type": "scenario",
+                "name": sc.get("description", ""),
+                "description": sc.get("description", ""),
+                "priority": "P1",
+                "tags": [dim],
+                "children": [],
+                "dependencies": {
+                    "upstream_nodes": [],
+                    "downstream_nodes": [],
+                    "apis": [],
+                    "data_entities": [],
+                    "state_pre": [],
+                    "state_post": [],
+                },
+                "business_rules": [],
+                "steps": sc.get("steps", []),
+                "expected": sc.get("expected", ""),
+                "e2e": sc.get("e2e", False),
+                "layer_entry": sc.get("layer_entry", "api"),
+                "dimension": dim,
+            }
+            graph.add_node(sc_node, parent_id=feat_id)
+
+    graph.dimensions_used = sorted(dims_used)
+
+    # Infer dependencies
+    if arch_apis or arch_entities:
+        dep_map = infer_feature_dependencies(features, arch_text if arch_path and Path(arch_path).exists() else "")
+        for feat_id, deps in dep_map.items():
+            node = graph.get_node(feat_id)
+            if node:
+                node["dependencies"].update(deps)
+                # Add graph edges for upstream/downstream
+                for up_id in deps.get("upstream_nodes", []):
+                    try:
+                        graph.add_dependency(up_id, feat_id, "upstream")
+                    except KeyError:
+                        pass
+
+    return graph
+
+
+def _build_legacy_outline(features, all_scenarios, project_type, prd_version, arch_version):
+    """Build the legacy MasterOutline dict from features and scenarios."""
+    entries = []
     total_scenarios = 0
 
     for feat in features:
-        scenarios = _generate_scenarios_for_feature(feat, arch_ctx.get("has_ui", True), arch_ctx)
+        feat_id = feat.get("feature_id", "")
+        scenarios = all_scenarios.get(feat_id, [])
         total_scenarios += len(scenarios)
         entries.append({
-            "feature_id": feat["feature_id"],
-            "feature_name": feat["feature_name"],
-            "prd_ref": feat["prd_ref"],
+            "feature_id": feat_id,
+            "feature_name": feat.get("feature_name", ""),
+            "prd_ref": feat.get("prd_ref", ""),
             "scenarios": scenarios,
         })
 
@@ -353,6 +372,7 @@ def generate_outline(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "prd_version": prd_version,
         "arch_version": arch_version,
+        "project_type": project_type,
         "entries": entries,
         "total_scenarios": total_scenarios,
     }
@@ -362,14 +382,17 @@ def generate_outline(
 # Public: write_outline (to markdown)
 # --------------------------------------------------------------------------
 
-def write_outline(outline: dict, output_path: str) -> None:
-    """Write MasterOutline to MASTER_OUTLINE.md with coverage matrix."""
+def write_outline(outline: dict, output_path: str, test_graph=None) -> None:
+    """Write MasterOutline to MASTER_OUTLINE.md with coverage matrix.
+
+    If test_graph is provided, also saves test_graph.json to .lifecycle/.
+    """
     lines = [
         "# 主测试大纲 (Master Test Outline)",
         "",
         f"**版本：** {outline['version']}  |  **生成时间：** {outline['generated_at']}",
         f"**基于 PRD 版本：** {outline['prd_version']}  |  **架构版本：** {outline['arch_version']}",
-        f"**总测试场景数：** {outline['total_scenarios']}",
+        f"**项目类型：** {outline.get('project_type', 'web')}  |  **总测试场景数：** {outline['total_scenarios']}",
         "",
         "> 此文件是测试追溯的权威来源。任何需求或代码变更后，",
         "> 请通过 `python scripts/__main__.py outline trace` 找出受影响的测试用例。",
@@ -378,24 +401,49 @@ def write_outline(outline: dict, output_path: str) -> None:
         "",
         "## 测试覆盖矩阵",
         "",
-        "| 功能 ID | 功能名称 | 场景数 | UI | API | DATA | ASYNC | EXT | FILE | AUTH |",
-        "|---|---|---|---|---|---|---|---|---|---|",
     ]
 
-    # Build coverage matrix
+    # Collect all dimensions dynamically from scenarios
+    all_dims = set()
+    for entry in outline["entries"]:
+        for sc in entry["scenarios"]:
+            dim = sc.get("dimension", "")
+            if dim:
+                all_dims.add(dim)
+            # Fallback: parse from description for legacy scenarios
+            elif sc.get("description", ""):
+                m = re.match(r"\[(\w+)\]", sc["description"])
+                if m:
+                    all_dims.add(f"[{m.group(1)}]")
+
+    dim_list = sorted(all_dims) if all_dims else ["UI", "API", "DATA"]
+
+    # Build matrix header
+    header = "| 功能 ID | 功能名称 | 场景数 | " + " | ".join(d.strip("[]") for d in dim_list) + " |"
+    sep = "|---|---|---|" + "|".join(["---"] * len(dim_list)) + "|"
+    lines.append(header)
+    lines.append(sep)
+
+    # Build coverage matrix rows
     for entry in outline["entries"]:
         fid = entry["feature_id"]
         fname = entry["feature_name"]
         sc_count = len(entry["scenarios"])
-        dims = {"UI": 0, "API": 0, "DATA": 0, "ASYNC": 0, "EXT": 0, "FILE": 0, "AUTH": 0}
+        dim_hits = {d: 0 for d in dim_list}
         for sc in entry["scenarios"]:
-            desc = sc.get("description", "")
-            for dim in dims:
-                if f"[{dim}]" in desc:
-                    dims[dim] += 1
+            sc_dim = sc.get("dimension", "")
+            if sc_dim and sc_dim in dim_hits:
+                dim_hits[sc_dim] += 1
+            elif not sc_dim:
+                # Fallback: parse from description
+                m = re.match(r"\[(\w+)\]", sc.get("description", ""))
+                if m:
+                    tag = f"[{m.group(1)}]"
+                    if tag in dim_hits:
+                        dim_hits[tag] += 1
         row = f"| {fid} | {fname} | {sc_count} |"
-        for dim in dims:
-            row += f" {'✓' if dims[dim] else '—'} |"
+        for d in dim_list:
+            row += f" {'✓' if dim_hits[d] else '—'} |"
         lines.append(row)
 
     lines += ["", "---", ""]
@@ -430,6 +478,12 @@ def write_outline(outline: dict, output_path: str) -> None:
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     Path(output_path).write_text("\n".join(lines), encoding="utf-8")
+
+    # Save test_graph.json
+    if test_graph is not None:
+        graph_path = os.path.join(os.path.dirname(output_path), "..", "..", ".lifecycle", "test_graph.json")
+        os.makedirs(os.path.dirname(graph_path), exist_ok=True)
+        test_graph.save(graph_path)
 
 
 # --------------------------------------------------------------------------

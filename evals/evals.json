@@ -67,10 +67,27 @@
         "识别项目类型为 data-pipeline",
         "使用维度集: [DATA][ASYNC][IDEMPOTENCY][VOLUME][SCHEMA][BACKFILL]",
         "不使用 Web 专属的 [UI][AUTH] 维度",
-        "生成 Docs/tests/MASTER_OUTLINE.md"
+        "生成 Docs/tests/MASTER_OUTLINE.md",
+        "test_graph.json 被生成到 .lifecycle/ 目录",
+        "每个功能点包含 4 类防御场景 (happy, boundary, error, data)",
+        "维度根据项目类型自适应"
       ],
       "without_skill_expected": "使用固定 7 维度（含不相关的 [UI][AUTH]）",
       "notes": "验证自适应测试维度选择"
+    },
+    {
+      "id": "eval-06",
+      "name": "graph_impact: 知识图谱依赖影响分析",
+      "prompt": "我的项目已经生成了测试大纲。现在修改了用户登录功能，帮我分析这个变更会影响哪些测试和迭代。",
+      "condition": "with_skill",
+      "expected": [
+        "读取 .lifecycle/test_graph.json 进行图谱遍历",
+        "识别登录功能 (F01) 的下游依赖节点",
+        "列出受影响的测试场景 TST-*",
+        "计算影响距离和优先级",
+        "生成结构化影响分析报告"
+      ],
+      "notes": "验证图谱驱动的变更影响分析能力 (v1.1)"
     }
   ]
 }

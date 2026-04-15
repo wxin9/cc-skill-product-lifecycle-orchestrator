@@ -172,6 +172,85 @@ class MasterOutline(dict):
 
 
 # ---------------------------------------------------------------------------
+# Test graph — knowledge-graph-based test model (v1.1)
+# ---------------------------------------------------------------------------
+
+class DependencyDecl(dict):
+    """
+    Dependency declaration for a test graph node.
+    {
+      'upstream_nodes': List[str],    # node_ids of business predecessors
+      'downstream_nodes': List[str],  # node_ids of business successors
+      'apis': List[str],              # "POST /api/orders", "GET /api/users"
+      'data_entities': List[str],     # "tb_order", "user_cache_redis"
+      'state_pre': List[str],         # precondition states
+      'state_post': List[str],        # postcondition states
+    }
+    """
+
+class TestNode(dict):
+    """
+    A node in the test knowledge graph. Supports dynamic hierarchy:
+    domain > module > feature > scenario > rule (any level optional).
+    {
+      'node_id': str,             # F01, F01-S01, F01-S01-R01, DOM-TRADE
+      'node_type': str,           # 'domain'|'module'|'feature'|'scenario'|'rule'
+      'name': str,
+      'description': str,
+      'priority': str,            # 'P0'|'P1'|'P2'  (P0=critical)
+      'tags': List[str],          # semantic tags for fuzzy matching
+      'children': List['TestNode'],
+      'dependencies': DependencyDecl,
+      'business_rules': List[str],
+      # scenario-level fields (present when node_type == 'scenario'):
+      'steps': List[str],
+      'expected': str,
+      'e2e': bool,
+      'layer_entry': str,         # 'ui'|'api'|'cli'
+      'dimension': str,           # '[UI]','[API]','[DATA]', etc.
+      # rule-level fields (present when node_type == 'rule'):
+      'checkpoint': str,
+      'assertion_type': str,      # 'functional'|'boundary'|'error'|'data'
+    }
+    """
+
+class DimensionConfig(dict):
+    """
+    Configuration for a project-type-specific test dimension generator.
+    {
+      'dimension_tag': str,       # '[UI]', '[API]', '[DATA]', etc.
+      'name': str,                # human-readable dimension name
+      'description_template': str,
+      'steps_template': List[str],
+      'expected_template': str,
+      'e2e': bool,
+      'layer_entry': str,
+      'conditional_keywords': List[str],  # only generate if feature matches
+      'defensive_variants': List[str],    # 'happy'|'boundary'|'error'|'data'
+    }
+    """
+
+class TestGraphSchema(dict):
+    """
+    Top-level test knowledge graph — source of truth for impact analysis.
+    Stored in .lifecycle/test_graph.json.
+    {
+      'version': str,             # graph schema version
+      'generated_at': str,
+      'project_type': str,        # 'web'|'cli'|'mobile'|'data-pipeline'|'microservices'
+      'prd_version': str,
+      'arch_version': str,
+      'dimensions_used': List[str],
+      'nodes': List[TestNode],    # top-level nodes (tree roots)
+      'global_apis': List[str],   # all APIs extracted from ARCH.md
+      'global_entities': List[str],  # all data entities extracted
+      'total_nodes': int,
+      'total_scenarios': int,
+    }
+    """
+
+
+# ---------------------------------------------------------------------------
 # Iterations
 # ---------------------------------------------------------------------------
 

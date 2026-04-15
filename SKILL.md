@@ -460,14 +460,85 @@ Claude 会根据以下系统角色生成草案：
 3. 为每个 PRD 功能点（`### F01 — ` 格式）生成多维度测试场景
 4. 分配 TST-ID（格式 `TST-{F}-{S}`，如 `TST-F01-S01`）
 5. 生成覆盖矩阵表格
+6. **生成测试依赖图** `.lifecycle/test_graph.json`（v1.1.0 新增）
 
 **如未识别到项目类型，默认使用 web 维度集。**
+
+#### v1.1.0 新特性
+
+**1. 新增产物：test_graph.json**
+
+`outline generate` 现在会在 `.lifecycle/` 目录下生成 `test_graph.json`，与 `MASTER_OUTLINE.md` 同步生成。该文件包含：
+- 测试用例节点（TST-ID）
+- 依赖关系边（功能依赖、数据依赖、时序依赖）
+- 维度标签（用于快速查询）
+
+**2. 维度驱动的场景生成**
+
+测试场景基于项目类型使用 `DIMENSION_GENERATORS` 自动生成，每个维度生成 4 种防御性变体：
+- **happy**：正常路径，符合预期的输入
+- **boundary**：边界条件，极限值测试
+- **error**：错误处理，异常路径
+- **data**：数据完整性，脏数据、缺失字段
+
+示例（Web 项目 [API] 维度）：
+```
+TST-F01-S01: API 正常调用（happy）
+TST-F01-S02: API 边界参数（boundary）
+TST-F01-S03: API 错误响应（error）
+TST-F01-S04: API 数据校验（data）
+```
+
+**3. 自适应测试维度**
+
+维度自动适配项目类型（Phase 4 识别）：
+
+| 项目类型 | 维度集 | 说明 |
+|---------|--------|------|
+| web | [UI][API][DATA][AUTH][PERF][XSS] | Web 应用全栈测试 |
+| cli | [UNIT][INT][E2E][EDGE][INSTALL] | 命令行工具测试 |
+| mobile | [UI][OFFLINE][PUSH][PERF][DEVICE] | 移动端特性测试 |
+| data-pipeline | [DATA][ASYNC][IDEMPOTENCY][VOLUME][SCHEMA] | 数据管道测试 |
+| microservices | [API][CONTRACT][CHAOS][LATENCY][SCALE] | 微服务测试 |
+
+**4. 基于图的变更影响分析**
+
+`change` 命令和 `outline trace` 现在使用 `TestGraph.traverse_impact()` 进行更精确的依赖追踪：
+- 从变更节点出发，沿依赖边遍历
+- 识别直接依赖和传递依赖
+- 生成影响范围报告（包含依赖路径）
 
 ### 7b. 验证测试大纲
 
 ```bash
 ./lifecycle validate --doc Docs/tests/MASTER_OUTLINE.md --type test_outline
 ```
+
+### 7c. 依赖审查（v1.1.0 新增）
+
+审查和审计测试用例的依赖声明：
+
+```bash
+./lifecycle outline dependency-review
+```
+
+检查项：
+- 循环依赖检测
+- 孤立节点（无依赖且未被依赖）
+- 依赖合理性（如 E2E 不应依赖 UNIT）
+
+### 7d. 格式迁移（v1.1.0 新增）
+
+将旧版 `MASTER_OUTLINE.md` 迁移到新的 `test_graph.json` 格式：
+
+```bash
+./lifecycle outline migrate --from Docs/tests/MASTER_OUTLINE.md
+```
+
+迁移后：
+- 保留原有测试用例和描述
+- 自动推断依赖关系（基于命名约定）
+- 生成 `test_graph.json` 并验证完整性
 
 > **完成记录（生成后自动记录）**
 > ```bash
@@ -703,6 +774,8 @@ Sprint Review 包含：
 # 迭代相关
 ./lifecycle plan
 ./lifecycle outline generate --prd Docs/product/PRD.md --arch Docs/tech/ARCH.md --output Docs/tests/MASTER_OUTLINE.md
+./lifecycle outline dependency-review  # v1.1.0 新增：审查依赖声明
+./lifecycle outline migrate --from Docs/tests/MASTER_OUTLINE.md  # v1.1.0 新增：迁移到 test_graph.json
 ./lifecycle gate --iteration 1
 ./lifecycle test-record --iteration 1 --test-id TST-F01-S01 --status pass
 ./lifecycle test-record --iteration 1 --test-id TST-F01-S02 --status fail --resolution "..."

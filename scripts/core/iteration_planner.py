@@ -13,6 +13,7 @@ Usage:
   python scripts/core/iteration_planner.py rebalance --plan-dir Docs/iterations/ --move TASK_ID --to-iter 2
 """
 from __future__ import annotations
+import os
 import re
 import sys
 import json
@@ -20,6 +21,39 @@ import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
+
+
+# --------------------------------------------------------------------------
+# E2E Templates by project type
+# --------------------------------------------------------------------------
+
+E2E_TEMPLATES = {
+    "web": {
+        "data_flow": "用户操作 → 前端校验 → API 调用 → 业务逻辑 → 数据库读写 → 响应返回 → 界面更新",
+        "entry_type": "界面",
+        "exit_type": "界面反馈",
+    },
+    "cli": {
+        "data_flow": "命令行输入 → 参数解析 → 业务逻辑 → 数据处理 → 标准输出/文件写入",
+        "entry_type": "CLI",
+        "exit_type": "标准输出",
+    },
+    "mobile": {
+        "data_flow": "用户触控 → 离线缓存检查 → API 调用 → 业务逻辑 → 本地存储 → UI 更新 → 推送通知",
+        "entry_type": "界面",
+        "exit_type": "界面反馈",
+    },
+    "data-pipeline": {
+        "data_flow": "数据源读取 → 格式解析 → 转换/聚合 → 质量校验 → 目标写入 → 状态回调",
+        "entry_type": "数据入口",
+        "exit_type": "数据出口",
+    },
+    "microservices": {
+        "data_flow": "API Gateway → 服务路由 → 内部 RPC → 业务聚合 → 数据持久化 → 响应组装",
+        "entry_type": "API 网关",
+        "exit_type": "响应聚合",
+    },
+}
 
 
 # --------------------------------------------------------------------------
@@ -117,16 +151,17 @@ def _group_features_into_iterations(
     return groups
 
 
-def _build_e2e_criteria(features: List[dict], has_ui: bool) -> List[dict]:
+def _build_e2e_criteria(features: List[dict], project_type: str = "web") -> List[dict]:
     """Build E2E acceptance criteria for a group of features."""
+    template = E2E_TEMPLATES.get(project_type, E2E_TEMPLATES["web"])
     criteria = []
-    entry_type = "界面" if has_ui else "API"
+    entry_type = template["entry_type"]
 
     for feat in features[:2]:  # Top 2 features get explicit E2E criteria
         criteria.append({
             "description": f"用户能够完整使用「{feat['feature_name']}」功能",
             "entry_point": f"{entry_type}入口：{feat['feature_name']}页面/端点",
-            "data_flow": "用户操作 → 前端校验 → API 调用 → 业务逻辑 → 数据库读写 → 响应返回 → 界面更新",
+            "data_flow": template["data_flow"],
             "test_case_refs": [f"TST-{feat['feature_id']}-S01"],
         })
 
@@ -160,10 +195,14 @@ def plan_iterations(
     constraints = constraints or {}
     features = _extract_prd_features(prd_path)
 
-    has_ui = True
-    if arch_path and Path(arch_path).exists():
-        arch_text = Path(arch_path).read_text(encoding="utf-8", errors="replace")
-        has_ui = bool(re.search(r"(前端|UI|界面|web|React|Vue|HTML|frontend)", arch_text, re.IGNORECASE))
+    # Detect project type
+    project_type = "web"  # default
+    if arch_path and os.path.exists(arch_path):
+        from .project_type_detector import detect_from_arch
+        try:
+            project_type = detect_from_arch(arch_path)
+        except Exception:
+            pass
 
     feature_groups = _group_features_into_iterations(features, constraints)
     iterations: List[dict] = []
@@ -175,7 +214,7 @@ def plan_iterations(
         if len(feature_names) > 2:
             goal += f" 以及 {len(feature_names)-2} 个相关功能"
 
-        e2e_criteria = _build_e2e_criteria(group, has_ui)
+        e2e_criteria = _build_e2e_criteria(group, project_type=project_type)
         dependencies = list(range(1, i))  # depends on all previous iterations
 
         iterations.append({

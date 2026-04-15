@@ -527,6 +527,99 @@ def _validate_test_outline(content: str, path: str) -> dict:
         })
         suggestions.append("端到端场景应标记 [E2E]，以便区分集成测试和单元测试")
 
+    # === Graph Structure Validation (v1.1) ===
+    import os
+    graph_path = os.path.join(os.path.dirname(path), "..", "..", ".lifecycle", "test_graph.json")
+    if os.path.exists(graph_path):
+        try:
+            from .test_graph import TestGraph
+            graph = TestGraph.load(graph_path)
+
+            # Check: Dependencies declared
+            features = graph.find_nodes(node_type="feature")
+            deps_declared = 0
+            for feat in features:
+                deps = feat.get("dependencies", {})
+                if deps.get("upstream_nodes") or deps.get("downstream_nodes") or deps.get("apis") or deps.get("data_entities"):
+                    deps_declared += 1
+
+            if features and deps_declared / len(features) >= 0.7:
+                score += 5
+                issues.append({
+                    "field": "依赖声明",
+                    "message": f"依赖声明覆盖率: {deps_declared}/{len(features)} ({deps_declared*100//len(features)}%)",
+                    "severity": "info"
+                })
+            else:
+                issues.append({
+                    "field": "依赖声明",
+                    "message": f"依赖声明覆盖率较低: {deps_declared}/{len(features)}",
+                    "severity": "warning"
+                })
+
+            # Check: 4 defensive scenarios per feature
+            defensive_ok = 0
+            for feat in features:
+                scenarios = [n for n in graph.nodes.values() if n.get("node_type") == "scenario" and n.get("node_id", "").startswith(feat.get("node_id", ""))]
+                # Check for happy/boundary/error/data variants
+                variants = set(s.get("variant", "") for s in scenarios)
+                if len(variants & {"happy", "boundary", "error", "data"}) >= 3:
+                    defensive_ok += 1
+
+            if features and defensive_ok / len(features) >= 0.6:
+                score += 5
+                issues.append({
+                    "field": "防御场景",
+                    "message": f"防御场景覆盖: {defensive_ok}/{len(features)} features have ≥3 variants",
+                    "severity": "info"
+                })
+            else:
+                issues.append({
+                    "field": "防御场景",
+                    "message": f"防御场景覆盖不足: {defensive_ok}/{len(features)}",
+                    "severity": "warning"
+                })
+
+            # Check: Node ID format
+            id_format_ok = True
+            for node in graph.nodes.values():
+                nid = node.get("node_id", "")
+                ntype = node.get("node_type", "")
+                if ntype == "feature" and not re.match(r'F\d+', nid):
+                    id_format_ok = False
+                    break
+                if ntype == "scenario" and not re.match(r'F\d+-S\d+', nid):
+                    id_format_ok = False
+                    break
+
+            if id_format_ok:
+                score += 5
+                issues.append({
+                    "field": "节点ID格式",
+                    "message": "节点 ID 格式正确",
+                    "severity": "info"
+                })
+            else:
+                issues.append({
+                    "field": "节点ID格式",
+                    "message": "部分节点 ID 格式不规范",
+                    "severity": "warning"
+                })
+
+        except Exception as e:
+            issues.append({
+                "field": "图结构验证",
+                "message": f"图结构验证失败: {e}",
+                "severity": "warning"
+            })
+    else:
+        # No test_graph.json - not an error, just info
+        issues.append({
+            "field": "图谱验证",
+            "message": "未检测到 test_graph.json，跳过图谱验证（v1.0 格式）",
+            "severity": "info"
+        })
+
     score = max(0, min(100, score))
     passed = score >= THRESHOLD
 

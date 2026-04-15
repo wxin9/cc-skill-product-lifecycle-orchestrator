@@ -12,6 +12,10 @@ from .schemas import (
     ProjectScan,
     PauseState,
     LifecycleConfig,
+    DependencyDecl,
+    TestNode,
+    DimensionConfig,
+    TestGraphSchema,
 )
 
 __all__ = [
@@ -19,4 +23,5 @@ __all__ = [
     "Task", "GateResult",
     "OutlineEntry", "TestCase", "MasterOutline",
     "Iteration", "ProjectScan", "PauseState", "LifecycleConfig",
+    "DependencyDecl", "TestNode", "DimensionConfig", "TestGraphSchema",
 ]

@@ -421,6 +421,19 @@ def _check_layer4(root: Path, n: int) -> dict:
                 f"如果该功能有新的数据模型/API，请更新 Docs/tech/ARCH.md。"
             )
 
+    # === Coverage Metrics (v1.1) ===
+    coverage = _compute_coverage_metrics(root, n)
+    if coverage:
+        if "api_coverage" in coverage:
+            pct = int(coverage["api_coverage"] * 100)
+            warnings.append(f"API 覆盖率: {pct}%")
+        if "dependency_coverage" in coverage:
+            pct = int(coverage["dependency_coverage"] * 100)
+            warnings.append(f"依赖覆盖率: {pct}%")
+        if "dimension_coverage" in coverage:
+            pct = int(coverage["dimension_coverage"] * 100)
+            warnings.append(f"维度覆盖率: {pct}%")
+
     return {"passed": True, "warnings": warnings}
 
 
@@ -476,6 +489,61 @@ def print_report(report: dict) -> None:
 # ---------------------------------------------------------------------------
 # 内部辅助
 # ---------------------------------------------------------------------------
+
+def _compute_coverage_metrics(root, iteration_n):
+    """Compute coverage metrics from test_graph.json."""
+    import os
+    from pathlib import Path
+
+    metrics = {}
+    graph_path = Path(root) / ".lifecycle" / "test_graph.json"
+
+    if not graph_path.exists():
+        return metrics
+
+    try:
+        from .test_graph import TestGraph
+        graph = TestGraph.load(str(graph_path))
+
+        # API coverage: APIs in graph vs APIs in ARCH.md
+        arch_path = Path(root) / "Docs" / "ARCH.md"
+        if arch_path.exists():
+            from .dependency_extractor import extract_apis
+            arch_text = arch_path.read_text(encoding='utf-8')
+            arch_apis = set(extract_apis(arch_text))
+            covered_apis = set()
+            for node in graph.nodes.values():
+                covered_apis.update(node.get("dependencies", {}).get("apis", []))
+            if arch_apis:
+                metrics["api_coverage"] = len(arch_apis & covered_apis) / len(arch_apis)
+
+        # Dependency coverage: nodes with deps / total nodes
+        features = graph.find_nodes(node_type="feature")
+        if features:
+            with_deps = sum(1 for f in features if f.get("dependencies", {}).get("upstream_nodes") or f.get("dependencies", {}).get("downstream_nodes") or f.get("dependencies", {}).get("apis") or f.get("dependencies", {}).get("data_entities"))
+            metrics["dependency_coverage"] = with_deps / len(features)
+
+        # Dimension coverage: dimensions used / dimensions available
+        dims_used = set()
+        for node in graph.nodes.values():
+            dim = node.get("dimension", "")
+            if dim:
+                dims_used.add(dim)
+        from .project_type_detector import get_dimensions
+        import json
+        ptype_path = Path(root) / ".lifecycle" / "project_type.json"
+        if ptype_path.exists():
+            ptype_data = json.loads(ptype_path.read_text())
+            ptype = ptype_data.get("project_type", "web")
+            all_dims = get_dimensions(ptype)
+            if all_dims:
+                metrics["dimension_coverage"] = len(dims_used) / len(all_dims)
+
+    except Exception as e:
+        metrics["error"] = str(e)
+
+    return metrics
+
 
 def _check_file_exists_and_nonempty(
     path: Path, name: str, min_bytes: int = 100, hint: str = ""

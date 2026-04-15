@@ -1,6 +1,6 @@
 {
   "name": "product-lifecycle",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "AI 协作 + 强制门控的产品全生命周期管理",
   "author": "Claude Code",
   "created_at": "2026-04-04",
@@ -8,7 +8,8 @@
   "trigger_keywords": [
     "产品设计", "PRD", "需求文档", "技术架构", "迭代规划",
     "product-lifecycle", "产品管理",
-    "从零开始做产品", "迭代门控", "ADR", "velocity追踪", "DoD", "Sprint Review"
+    "从零开始做产品", "迭代门控", "ADR", "velocity追踪", "DoD", "Sprint Review",
+    "test graph", "dependency review", "test knowledge graph", "维度"
   ],
   "model_compatibility": {
     "claude-opus-4-6": "full",

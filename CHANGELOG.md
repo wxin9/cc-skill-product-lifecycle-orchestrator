@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-04-15
+
+### Added
+- **Test Knowledge Graph** — Structure-based test model with node tree, dependency edges, and dimension tags (`.lifecycle/test_graph.json`)
+- **Graph-based Impact Analysis** — `change` and `outline trace` now use BFS traversal for accurate dependency tracking
+- **Dimension-driven Scenario Generation** — 4 defensive variants per dimension (happy, boundary, error, data) using `DIMENSION_GENERATORS`
+- **Adaptive E2E Templates** — Project-type-specific E2E acceptance criteria (web/cli/mobile/data-pipeline/microservices)
+- **Dependency Review Command** — `outline dependency-review` audits feature dependencies
+- **Migrate Command** — `outline migrate` converts old MASTER_OUTLINE.md to test_graph.json format
+- **Coverage Metrics** — API coverage, dependency coverage, dimension coverage in gate reports
+- **Graph Structure Validation** — Validates dependencies declared and defensive scenarios present
+- New TypedDicts: `TestNode`, `DependencyDecl`, `DimensionConfig`, `TestGraphSchema`
+- New functions: `add_dependency()`, `get_dimension_generators()`, `extract_apis()`, `extract_data_entities()`, `infer_feature_dependencies()`
+
+### Changed
+- `test_outline.py` refactored: 9 hardcoded dimensions → dimension-driven generation
+- `change_detector.py` refactored: text scanning → graph traversal
+- `iteration_planner.py` enhanced: hardcoded E2E → project-type-aware templates
+- `__main__.py` enhanced: iter-tests bug fixed + graph integration
+- `doc_validator.py` enhanced: graph structure validation
+- `artifact_validator.py` enhanced: coverage metrics computation
+- `project_type_detector.py` expanded: DIMENSION_GENERATORS dict (+150 lines)
+
+### Fixed
+- iter-tests always generated empty test cases (outline_data was never loaded)
+
+### Removed
+- Fallback logic for old MASTER_OUTLINE.md format (v1.1 uses graph directly)
+
 ## [1.0.0] - 2026-04-09
 
 ### Added

@@ -47,7 +47,8 @@
       "id": "test-outline-ready",
       "description": "自适应测试大纲：按项目类型选维度（Web/CLI/Mobile/Data/Microservices）",
       "artifacts": [
-        {"path": "Docs/tests/MASTER_OUTLINE.md", "min_bytes": 600}
+        {"path": "Docs/tests/MASTER_OUTLINE.md", "min_bytes": 600},
+        {"path": ".lifecycle/test_graph.json", "min_bytes": 200, "description": "测试知识图谱 (v1.1)"}
       ]
     },
     {

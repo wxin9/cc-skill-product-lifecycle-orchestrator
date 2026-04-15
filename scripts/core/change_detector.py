@@ -9,7 +9,7 @@ Four cascade paths:
 
 Usage:
   python scripts/core/change_detector.py detect --old OLD_PRD --new NEW_PRD
-  python scripts/core/change_detector.py impact --change CHANGE.json --outline OUTLINE.md
+  python scripts/core/change_detector.py impact --change CHANGE.json --graph test_graph.json
 """
 from __future__ import annotations
 import re
@@ -173,22 +173,23 @@ def detect_prd_diff(
 
 
 # --------------------------------------------------------------------------
-# Public: cascade_impact (from PRD change)
+# Internal: graph-based impact analysis
 # --------------------------------------------------------------------------
 
-def cascade_impact(change_report: dict, master_outline_path: str) -> dict:
+def _cascade_impact_graph(change_report: dict, test_graph_path: str) -> dict:
     """
-    Given a ChangeReport, find all downstream artifacts that need updating.
+    Graph-based impact analysis using TestGraph.
 
-    Args:
-        change_report: Output of detect_prd_diff().
-        master_outline_path: Path to MASTER_OUTLINE.md.
+    For each changed feature in change_report, uses traverse_impact() to find
+    affected nodes. For API changes, uses find_by_api() to locate affected
+    nodes first, then traverse_impact() for cascading.
 
-    Returns:
-        ImpactReport dict.
+    Returns an ImpactReport dict (same structure as the public functions).
     """
+    from .test_graph import TestGraph
+
+    graph = TestGraph.load(test_graph_path)
     changes = change_report.get("changes", [])
-    changed_ids = {c["feature_id"] for c in changes}
 
     affected_tests: List[str] = []
     affected_iterations: List[int] = []
@@ -197,29 +198,52 @@ def cascade_impact(change_report: dict, master_outline_path: str) -> dict:
         c.get("affects_data_model") or c.get("affects_api") for c in changes
     )
 
-    # Scan MASTER_OUTLINE.md for affected scenarios
-    if Path(master_outline_path).exists():
-        outline_text = Path(master_outline_path).read_text(encoding="utf-8", errors="replace")
-        for fid in changed_ids:
-            # Find TST-{fid}-* references
-            tst_refs = re.findall(rf"TST-{re.escape(fid)}-\w+", outline_text, re.IGNORECASE)
-            affected_tests.extend(tst_refs)
-            # Find iteration references near this feature
-            iter_refs = re.findall(rf"iter[- ]?(\d+)", outline_text[
-                max(0, outline_text.lower().find(fid.lower()) - 200):
-                outline_text.lower().find(fid.lower()) + 200
-            ], re.IGNORECASE)
-            for n in iter_refs:
-                n_int = int(n)
-                if n_int not in affected_iterations:
-                    affected_iterations.append(n_int)
+    # Collect all impacted nodes via graph traversal per change
+    impacted_node_ids: set[str] = set()
 
-    # Build impact items
     for change in changes:
         ctype = change["change_type"]
         fid = change["feature_id"]
         fname = change["feature_name"]
 
+        # Build changed_items for traverse_impact
+        changed_items: dict = {"node_ids": [], "apis": [], "data_entities": []}
+
+        # Find graph nodes that belong to this feature (node_id contains fid)
+        feature_node_ids = [
+            nid for nid in graph.nodes
+            if fid.upper() in nid.upper()
+        ]
+        changed_items["node_ids"] = feature_node_ids
+
+        # If the change affects APIs, locate nodes via find_by_api
+        if change.get("affects_api"):
+            # Extract API-like patterns from the description
+            desc = change.get("new_description") or change.get("old_description") or ""
+            api_patterns = re.findall(r"(?:API|api|接口)[\-:/]?\s*([A-Za-z][\w/\-]*)", desc)
+            for api_pat in api_patterns:
+                matching = graph.find_by_api(api_pat)
+                changed_items["apis"].extend(n["node_id"] for n in matching)
+            # Also try the feature name itself as an API lookup
+            matching = graph.find_by_api(fname)
+            changed_items["apis"].extend(n["node_id"] for n in matching)
+
+        # If the change affects data model, locate nodes via find_by_entity
+        if change.get("affects_data_model"):
+            desc = change.get("new_description") or change.get("old_description") or ""
+            entity_patterns = re.findall(
+                r"(?:实体|表|model|entity)[\-:/]?\s*([A-Za-z][\w]*)", desc, re.IGNORECASE,
+            )
+            for entity_pat in entity_patterns:
+                matching = graph.find_by_entity(entity_pat)
+                changed_items["data_entities"].extend(n["node_id"] for n in matching)
+
+        # Run BFS traversal to find all impacted nodes
+        impact_results = graph.traverse_impact(changed_items, direction="both")
+        for item in impact_results:
+            impacted_node_ids.add(item["node_id"])
+
+        # Build impact items per change type
         if ctype == "added":
             impact_items.append({
                 "type": "test",
@@ -236,22 +260,50 @@ def cascade_impact(change_report: dict, master_outline_path: str) -> dict:
 
         elif ctype in ("modified", "adjusted"):
             verb = "重新生成" if ctype == "modified" else "检查并更新"
-            for tst in [t for t in affected_tests if fid in t]:
-                impact_items.append({
-                    "type": "test",
-                    "id": tst,
-                    "description": f"功能「{fname}」变更，{verb}对应测试用例",
-                    "action_required": "regenerate" if ctype == "modified" else "review",
-                })
+            # Find TST-* nodes impacted by this feature change
+            for nid in impacted_node_ids:
+                node = graph.get_node(nid)
+                if node and nid.upper().startswith("TST-") and fid.upper() in nid.upper():
+                    impact_items.append({
+                        "type": "test",
+                        "id": nid,
+                        "description": f"功能「{fname}」变更，{verb}对应测试用例",
+                        "action_required": "regenerate" if ctype == "modified" else "review",
+                    })
 
         elif ctype == "deleted":
-            for tst in [t for t in affected_tests if fid in t]:
-                impact_items.append({
-                    "type": "test",
-                    "id": tst,
-                    "description": f"功能「{fname}」已删除，废弃对应测试用例",
-                    "action_required": "deprecate",
-                })
+            for nid in impacted_node_ids:
+                node = graph.get_node(nid)
+                if node and nid.upper().startswith("TST-") and fid.upper() in nid.upper():
+                    impact_items.append({
+                        "type": "test",
+                        "id": nid,
+                        "description": f"功能「{fname}」已删除，废弃对应测试用例",
+                        "action_required": "deprecate",
+                    })
+
+    # Map impacted nodes back to TST-* IDs and iteration numbers
+    for nid in impacted_node_ids:
+        node = graph.get_node(nid)
+        if node is None:
+            continue
+        # Collect TST-* IDs
+        if nid.upper().startswith("TST-"):
+            affected_tests.append(nid)
+        # Extract iteration references from node tags or node_id
+        tags = node.get("tags") or []
+        for tag in tags:
+            iter_match = re.match(r"iter[- ]?(\d+)", tag, re.IGNORECASE)
+            if iter_match:
+                n_int = int(iter_match.group(1))
+                if n_int not in affected_iterations:
+                    affected_iterations.append(n_int)
+        # Also check node_id for iteration patterns like TST-F01-ITER3-*
+        iter_match = re.search(r"ITER(\d+)", nid, re.IGNORECASE)
+        if iter_match:
+            n_int = int(iter_match.group(1))
+            if n_int not in affected_iterations:
+                affected_iterations.append(n_int)
 
     if needs_arch_update:
         impact_items.append({
@@ -267,6 +319,7 @@ def cascade_impact(change_report: dict, master_outline_path: str) -> dict:
         "",
         f"**变更摘要：** {change_report.get('summary', '')}",
         f"**时间：** {change_report.get('timestamp', '')}",
+        f"**分析方式：** 图谱遍历（Graph-based）",
         "",
         "## 受影响的测试用例",
     ]
@@ -304,38 +357,92 @@ def cascade_impact(change_report: dict, master_outline_path: str) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Public: cascade_impact (from PRD change)
+# --------------------------------------------------------------------------
+
+def cascade_impact(change_report: dict, test_graph_path: str) -> dict:
+    """
+    Given a ChangeReport, find all downstream artifacts that need updating
+    using graph-based impact analysis.
+
+    Args:
+        change_report: Output of detect_prd_diff().
+        test_graph_path: Path to test_graph.json (TestGraph JSON file).
+
+    Returns:
+        ImpactReport dict.
+    """
+    return _cascade_impact_graph(change_report, test_graph_path)
+
+
+# --------------------------------------------------------------------------
 # Public: cascade_from_code_change
 # --------------------------------------------------------------------------
 
 def cascade_from_code_change(
     changed_components: List[str],
-    master_outline_path: str,
+    test_graph_path: str,
 ) -> dict:
     """
-    Cascade a code/development change through the test outline.
+    Cascade a code/development change through the test graph.
+
+    Uses TestGraph.find_by_api() and TestGraph.find_by_entity() to find
+    affected nodes, then traverse_impact() for cascading.
 
     Args:
         changed_components: List of component names / module descriptions changed.
-        master_outline_path: Path to MASTER_OUTLINE.md.
+        test_graph_path: Path to test_graph.json (TestGraph JSON file).
 
     Returns:
         ImpactReport-like dict focused on test impact.
     """
+    from .test_graph import TestGraph
+
+    graph = TestGraph.load(test_graph_path)
+
     affected_tests: List[str] = []
     impact_items: List[dict] = []
+    impacted_node_ids: set[str] = set()
 
-    if Path(master_outline_path).exists():
-        outline_text = Path(master_outline_path).read_text(encoding="utf-8", errors="replace")
-        for comp in changed_components:
-            # Search for component name mentions in outline
-            matches = re.finditer(re.escape(comp), outline_text, re.IGNORECASE)
-            for m in matches:
-                # Find nearby TST-* references (within ±500 chars)
-                window = outline_text[max(0, m.start()-500):m.end()+500]
-                tsts = re.findall(r"TST-[A-Z0-9]+-[A-Z0-9]+", window)
-                affected_tests.extend(tsts)
+    for comp in changed_components:
+        # Try to find nodes via API lookup
+        api_nodes = graph.find_by_api(comp)
+        # Try to find nodes via entity lookup
+        entity_nodes = graph.find_by_entity(comp)
+        # Also find nodes whose node_id or name contains the component
+        name_match_ids = [
+            nid for nid, node in graph.nodes.items()
+            if comp.lower() in (node.get("name") or "").lower()
+            or comp.lower() in nid.lower()
+        ]
 
-        affected_tests = list(dict.fromkeys(affected_tests))
+        # Collect seed node IDs from all lookup strategies
+        seed_node_ids = list(name_match_ids)
+        seed_node_ids.extend(n["node_id"] for n in api_nodes)
+        seed_node_ids.extend(n["node_id"] for n in entity_nodes)
+        # Deduplicate while preserving order
+        seen_seeds: set[str] = set()
+        unique_seeds: List[str] = []
+        for sid in seed_node_ids:
+            if sid not in seen_seeds:
+                seen_seeds.add(sid)
+                unique_seeds.append(sid)
+
+        # Run BFS traversal from these seeds
+        changed_items = {"node_ids": unique_seeds}
+        impact_results = graph.traverse_impact(changed_items, direction="both")
+        for item in impact_results:
+            impacted_node_ids.add(item["node_id"])
+
+    # Map impacted nodes to TST-* IDs
+    for nid in impacted_node_ids:
+        node = graph.get_node(nid)
+        if node is None:
+            continue
+        if nid.upper().startswith("TST-"):
+            affected_tests.append(nid)
+
+    affected_tests = list(dict.fromkeys(affected_tests))
 
     for tst in affected_tests:
         impact_items.append({
@@ -349,13 +456,14 @@ def cascade_from_code_change(
         "# 代码变更影响报告",
         "",
         f"**变更组件：** {', '.join(changed_components)}",
+        f"**分析方式：** 图谱遍历（Graph-based）",
         "",
         "## 受影响的测试用例",
     ]
     for t in affected_tests:
         lines.append(f"- [ ] `{t}` — 需要重新验证")
     if not affected_tests:
-        lines.append("- 未在测试大纲中找到直接关联的测试用例")
+        lines.append("- 未在测试图谱中找到直接关联的测试用例")
 
     return {
         "change_report": {"changes": [], "summary": f"代码变更：{changed_components}"},
@@ -382,7 +490,7 @@ if __name__ == "__main__":
 
     impact_p = sub.add_parser("impact", help="Cascade change to downstream artifacts")
     impact_p.add_argument("--change", required=True, help="ChangeReport JSON file")
-    impact_p.add_argument("--outline", required=True, help="MASTER_OUTLINE.md path")
+    impact_p.add_argument("--graph", required=True, help="test_graph.json path")
     impact_p.add_argument("--output", help="Write ImpactReport to file")
     impact_p.add_argument("--md", help="Write impact summary markdown to file")
 
@@ -399,7 +507,7 @@ if __name__ == "__main__":
 
     elif args.cmd == "impact":
         change_data = json.loads(Path(args.change).read_text(encoding="utf-8"))
-        impact = cascade_impact(change_data, args.outline)
+        impact = cascade_impact(change_data, args.graph)
         if args.md:
             Path(args.md).write_text(impact["summary_md"], encoding="utf-8")
             print(f"Impact summary written to {args.md}")
