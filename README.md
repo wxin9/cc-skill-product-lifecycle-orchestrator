@@ -8,23 +8,6 @@
 
 > **Script-Orchestrated + Interaction-Paused** product lifecycle management — orchestrator auto-executes phase sequences, pauses at interaction points, notifies model to handle, then resumes
 
-## ⚠ BREAKING CHANGES (v2.0)
-
-**All legacy commands have been removed**:
-- ❌ `./lifecycle init` → **Removed**
-- ❌ `./lifecycle validate` → **Removed**
-- ❌ `./lifecycle draft` → **Removed**
-- ❌ `./lifecycle plan` → **Removed**
-- ❌ All other legacy commands → **Removed**
-
-**New commands**:
-- ✅ `./orchestrator run --intent <intent> --user-input "<input>"` — Start orchestration
-- ✅ `./orchestrator resume --from-phase <phase-id>` — Resume from paused state
-- ✅ `./orchestrator status` — Show status
-- ✅ `./orchestrator cancel` — Cancel workflow
-
-**Migration**: Orchestrator will auto-migrate legacy `steps/` format to `checkpoint.json`. See [Migration Guide](#migration-guide-from-v10) below.
-
 ## 🎯 Core Value
 
 **Problems Solved**:
@@ -213,14 +196,6 @@ Phase 10: Handle Changes → Graph traversal cascade update
 ORCHESTRATOR_PARALLEL=1 ./orchestrator run --intent new-product --user-input "..."
 ```
 
-### Legacy Commands (Removed in v2.0)
-
-- ~~`python -m scripts init`~~ → Use `./orchestrator run --intent new-product`
-- ~~`python -m scripts validate`~~ → Orchestrator auto-validates
-- ~~`python -m scripts draft`~~ → Orchestrator auto-drafts
-- ~~`python -m scripts plan`~~ → Orchestrator auto-plans
-- ~~All other legacy commands~~ → Use orchestrator commands
-
 ## 📊 Generated Project Structure
 
 ```
@@ -246,71 +221,6 @@ Docs/
 - **Recommended**: Claude Sonnet 4+ — Best drafting quality
 - **Usable**: Claude Haiku — Can complete full workflow, slightly lower drafting quality
 - **Core Mechanism**: Orchestrator handles workflow, model just responds to notifications
-
-## 🔄 Migration Guide (from v1.0)
-
-### Step 1: Backup Existing Project
-
-```bash
-cp -r myproject myproject_backup
-```
-
-### Step 2: Update Skill
-
-```bash
-cd ~/.claude/skills/product-lifecycle
-git pull origin main
-# Or re-download from GitHub
-```
-
-### Step 3: Run Migration
-
-Orchestrator will auto-migrate legacy `steps/` format to `checkpoint.json`:
-
-```bash
-./orchestrator status
-# Output:
-# ⚠ Migrating from legacy steps/ format...
-# ✓ Migrated 5 phases from legacy format
-```
-
-### Step 4: Verify Migration
-
-```bash
-./orchestrator status
-# Should show:
-# Status: migrated
-# Completed Phases: [phase-1-init, phase-3-validate-prd, ...]
-```
-
-### Step 5: Use New Commands
-
-All legacy commands have been removed. Use orchestrator commands:
-
-| Legacy Command | New Command |
-|----------------|-------------|
-| `./lifecycle init` | `./orchestrator run --intent new-product` |
-| `./lifecycle validate` | Orchestrator auto-validates |
-| `./lifecycle draft prd` | Orchestrator auto-drafts at Phase 2 |
-| `./lifecycle plan` | Orchestrator auto-plans at Phase 8 |
-| `./lifecycle gate --iteration 1` | Orchestrator auto-gates at Phase 9 |
-| `./lifecycle change prd` | `./orchestrator run --intent prd-change` |
-
-### Troubleshooting
-
-**Problem**: Migration failed
-
-**Solution**:
-1. Check `.lifecycle/steps/` directory exists
-2. Check step files are valid JSON
-3. Manually delete `.lifecycle/checkpoint.json` and re-run `./orchestrator status`
-
-**Problem**: Resume doesn't work
-
-**Solution**:
-1. Check `.lifecycle/checkpoint.json` exists
-2. Check `current_phase` field is set
-3. Check `.lifecycle/notification.json` exists
 
 ## 📄 License
 

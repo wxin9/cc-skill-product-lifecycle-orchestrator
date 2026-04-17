@@ -8,23 +8,6 @@
 
 > **脚本编排 + 交互暂停**的产品全生命周期管理 — orchestrator 自动执行 Phase 序列，在交互节点暂停，通知模型处理，然后恢复
 
-## ⚠ 破坏性变更 (v2.0)
-
-**所有旧命令已移除**：
-- ❌ `./lifecycle init` → **已移除**
-- ❌ `./lifecycle validate` → **已移除**
-- ❌ `./lifecycle draft` → **已移除**
-- ❌ `./lifecycle plan` → **已移除**
-- ❌ 所有其他旧命令 → **已移除**
-
-**新命令**：
-- ✅ `./orchestrator run --intent <intent> --user-input "<输入>"` — 启动编排
-- ✅ `./orchestrator resume --from-phase <phase-id>` — 从暂停状态恢复
-- ✅ `./orchestrator status` — 显示状态
-- ✅ `./orchestrator cancel` — 取消工作流
-
-**迁移**：Orchestrator 会自动迁移旧的 `steps/` 格式到 `checkpoint.json`。参见下方的[迁移指南](#迁移指南从-v10)。
-
 ## 🎯 核心价值
 
 **解决的问题**：
@@ -246,71 +229,6 @@ Docs/
 - **推荐**：Claude Sonnet 4+ — 最佳起草质量
 - **可用**：Claude Haiku — 可完成完整工作流，起草质量稍低
 - **核心机制**：Orchestrator 处理工作流，模型只需响应通知
-
-## 🔄 迁移指南（从 v1.0）
-
-### 步骤 1：备份现有项目
-
-```bash
-cp -r myproject myproject_backup
-```
-
-### 步骤 2：更新技能
-
-```bash
-cd ~/.claude/skills/product-lifecycle
-git pull origin main
-# 或从 GitHub 重新下载
-```
-
-### 步骤 3：运行迁移
-
-Orchestrator 会自动迁移旧版 `steps/` 格式到 `checkpoint.json`：
-
-```bash
-./orchestrator status
-# 输出：
-# ⚠ 正在从旧版 steps/ 格式迁移...
-# ✓ 从旧版格式迁移了 5 个 Phase
-```
-
-### 步骤 4：验证迁移
-
-```bash
-./orchestrator status
-# 应显示：
-# 状态：migrated
-# 已完成 Phase：[phase-1-init, phase-3-validate-prd, ...]
-```
-
-### 步骤 5：使用新命令
-
-所有旧命令已移除。使用 orchestrator 命令：
-
-| 旧命令 | 新命令 |
-|--------|--------|
-| `./lifecycle init` | `./orchestrator run --intent new-product` |
-| `./lifecycle validate` | Orchestrator 自动验证 |
-| `./lifecycle draft prd` | Orchestrator 在 Phase 2 自动起草 |
-| `./lifecycle plan` | Orchestrator 在 Phase 8 自动规划 |
-| `./lifecycle gate --iteration 1` | Orchestrator 在 Phase 9 自动门控 |
-| `./lifecycle change prd` | `./orchestrator run --intent prd-change` |
-
-### 故障排除
-
-**问题**：迁移失败
-
-**解决方案**：
-1. 检查 `.lifecycle/steps/` 目录是否存在
-2. 检查步骤文件是否为有效 JSON
-3. 手动删除 `.lifecycle/checkpoint.json` 并重新运行 `./orchestrator status`
-
-**问题**：恢复不工作
-
-**解决方案**：
-1. 检查 `.lifecycle/checkpoint.json` 是否存在
-2. 检查 `current_phase` 字段是否设置
-3. 检查 `.lifecycle/notification.json` 是否存在
 
 ## 📄 许可证
 
