@@ -6,46 +6,65 @@
 [![Python](https://img.shields.io/badge/Python-3.8%2B-brightgreen.svg)](https://www.python.org/)
 [![Release](https://img.shields.io/github/v/release/wxin9/cc-skill-product-lifecycle)](https://github.com/wxin9/cc-skill-product-lifecycle/releases)
 
-> **AI-Collaborative + Script-Enforced Gates** for product lifecycle management — from PRD to delivery, ensuring every step completes correctly
+> **Script-Orchestrated + Interaction-Paused** product lifecycle management — orchestrator auto-executes phase sequences, pauses at interaction points, notifies model to handle, then resumes
+
+## ⚠ BREAKING CHANGES (v2.0)
+
+**All legacy commands have been removed**:
+- ❌ `./lifecycle init` → **Removed**
+- ❌ `./lifecycle validate` → **Removed**
+- ❌ `./lifecycle draft` → **Removed**
+- ❌ `./lifecycle plan` → **Removed**
+- ❌ All other legacy commands → **Removed**
+
+**New commands**:
+- ✅ `./orchestrator run --intent <intent> --user-input "<input>"` — Start orchestration
+- ✅ `./orchestrator resume --from-phase <phase-id>` — Resume from paused state
+- ✅ `./orchestrator status` — Show status
+- ✅ `./orchestrator cancel` — Cancel workflow
+
+**Migration**: Orchestrator will auto-migrate legacy `steps/` format to `checkpoint.json`. See [Migration Guide](#migration-guide-from-v10) below.
 
 ## 🎯 Core Value
 
 **Problems Solved**:
-- ❌ Scattered docs, version chaos
-- ❌ Process relies on self-discipline, easy to skip steps
-- ❌ Broken change cascade
-- ❌ Blind test coverage
+- ❌ Model-driven workflow: Model forgets midway, subsequent scripts never run
+- ❌ Manual step execution: User must know next command
+- ❌ No interaction handling: Model cannot pause for user input
+- ❌ No failure recovery: Validation failure blocks entire workflow
 
 **Solution**:
-- ✅ Script-enforced gates (`sys.exit(1)` physical blocking)
-- ✅ Test Knowledge Graph-driven
-- ✅ Dimension-adaptive scenario generation
-- ✅ Automatic change impact analysis
+- ✅ **Script-orchestrated engine**: Orchestrator auto-executes phase sequences
+- ✅ **Interaction pauses**: Orchestrator pauses at user review/interview nodes, notifies model
+- ✅ **Failure recovery**: Validation/DoD failure pauses workflow, model fixes and resumes
+- ✅ **State persistence**: Checkpoint records phase-level state, supports resume from breakpoint
 
-## ⭐ v1.1.0 New Features
+## ⭐ v2.0.0 New Features
 
-### 1. Test Knowledge Graph
-- **Structured test model**: Feature → Scenario → Rule hierarchy
-- **Dependency graph**: Auto-track upstream/downstream, API, data entity dependencies
-- **Storage format**: `.lifecycle/test_graph.json`
+### 1. Orchestrator Engine
+- **Script-orchestrated workflow**: Auto-executes phase sequences based on intent
+- **State machine**: Phase-level state transitions with dependency checking
+- **No model memory needed**: Orchestrator handles entire workflow, model just responds to notifications
 
-### 2. Dimension-Driven Scenario Generation
-- **4 defensive variants**: Each dimension auto-generates happy/boundary/error/data
-- **Project type adaptive**:
-  - Web → `[UI][API][AUTH][DATA][PERF][XSS]`
-  - CLI → `[CLI][ARGS][IO][ERROR]`
-  - Data-Pipeline → `[DATA][ASYNC][IDEMPOTENCY][VOLUME][SCHEMA][BACKFILL]`
-  - Mobile → `[UI][OFFLINE][SYNC][PERF][BATTERY][PERMISSION]`
-  - Microservices → `[API][RPC][CIRCUIT][CACHE][AUTH][TRACE]`
+### 2. Interaction Pauses
+- **Automatic pause**: Orchestrator pauses at user review/interview nodes
+- **Dual notification**: stdout + `.lifecycle/notification.json`
+- **Resume support**: Model fixes issues and calls `resume` to continue
 
-### 3. Graph-Based Impact Analysis
-- **BFS traversal**: Precisely calculate change impact scope
-- **Auto cascade**: Modify PRD → auto-identify affected tests and iterations
-- **Distance & priority**: Output impact distance, sorted by priority
+### 3. Failure Recovery
+- **Validation failure**: Orchestrator pauses, model fixes and retries
+- **DoD failure**: Orchestrator pauses, model resolves and continues
+- **Retry strategy**: Configurable retry count per phase
 
-### 4. New Commands
-- `outline dependency-review` — Audit feature dependency declarations
-- `outline migrate` — Migrate old test outline to graph format
+### 4. Checkpoint Manager
+- **Phase-level state**: Records completed phases, current phase, phase data
+- **Auto-migration**: Migrates legacy `steps/` format to `checkpoint.json`
+- **Resume from breakpoint**: Load checkpoint and continue from paused phase
+
+### 5. Intent Resolver
+- **Regex matching**: Pattern-based intent recognition
+- **Priority ranking**: Bug-fix (1) > PRD-change (3) > New-product (9)
+- **Compound intent**: Handles multiple intents in sequence
 
 ## 🚀 Quick Start
 
@@ -59,19 +78,35 @@ git clone https://github.com/wxin9/cc-skill-product-lifecycle.git
 cp -r cc-skill-product-lifecycle ~/.claude/skills/product-lifecycle
 ```
 
-### Usage (Natural Language Conversation)
+### Usage (Orchestrator Commands)
 
-After installation, just talk to Claude Code:
+After installation, use orchestrator commands:
+
+```bash
+# Start new product workflow
+./orchestrator run --intent new-product --user-input "我想做一个任务管理工具"
+
+# Orchestrator will:
+# 1. Execute Phase 1 (auto) — Create doc structure
+# 2. Pause at Phase 2 — Notify model: "Waiting for PRD review"
+# 3. Model generates PRD draft
+# 4. Resume: ./orchestrator resume --from-phase phase-2-draft-prd
+# 5. Continue Phase 3-9...
+```
+
+**Example Conversation**:
 
 ```
-You: "Help me write a PRD for a task management tool"
-Claude: [Auto-drafts PRD] → [You review] → [Auto-snapshot on validation]
+You: "我想做一个任务管理工具"
+Claude: [Calls ./orchestrator run --intent new-product]
+        [Orchestrator pauses at Phase 2]
+        [Notification: "Waiting for PRD review"]
+        [Claude generates PRD draft]
+        [Calls ./orchestrator resume]
 
-You: "Design the technical architecture"
-Claude: [Auto-drafts architecture] → [Generates test graph] → [Plans iterations]
-
-You: "Requirements changed, need to add 2FA to login"
-Claude: [Identifies change] → [Graph traversal impact analysis] → [Lists affected tests & iterations] → [Cascades updates]
+You: "需求变了，要加支付功能"
+Claude: [Calls ./orchestrator run --intent prd-change]
+        [Orchestrator executes Phase 10 → Phase 2 → Phase 3...]
 ```
 
 ## 💡 Core Features
@@ -118,30 +153,25 @@ Phase 10: Handle Changes → Graph traversal cascade update
 ## 🛠️ Common Commands
 
 ```bash
-# Initialize project
-python -m scripts init --name "Project Name"
+# Start orchestration
+./orchestrator run --intent new-product --user-input "我想做一个产品"
 
-# AI-collaborative PRD drafting
-python -m scripts draft prd --description "Product description"
+# Resume from paused state
+./orchestrator resume --from-phase phase-2-draft-prd
 
-# Validate document
-python -m scripts validate --doc Docs/product/PRD.md --type prd
+# Show status
+./orchestrator status
 
-# Generate test graph and outline
-python -m scripts outline generate --prd PRD.md --arch ARCH.md
-
-# Plan iterations
-python -m scripts plan
-
-# Iteration gate (4-layer validation)
-python -m scripts gate --iteration 1
-
-# Handle changes (auto graph traversal)
-python -m scripts change prd
-
-# Dependency review
-python -m scripts outline dependency-review
+# Cancel workflow
+./orchestrator cancel
 ```
+
+**Legacy Commands (Removed in v2.0)**:
+- ~~`python -m scripts init`~~ → Use `./orchestrator run --intent new-product`
+- ~~`python -m scripts validate`~~ → Orchestrator auto-validates
+- ~~`python -m scripts draft`~~ → Orchestrator auto-drafts
+- ~~`python -m scripts plan`~~ → Orchestrator auto-plans
+- ~~All other legacy commands~~ → Use orchestrator commands
 
 ## 📊 Generated Project Structure
 
@@ -165,7 +195,72 @@ Docs/
 
 - **Recommended**: Claude Sonnet 4+ — Best drafting quality
 - **Usable**: Claude Haiku — Can complete full workflow, slightly lower drafting quality
-- **Core Mechanism**: Script-enforced gates don't depend on model capability
+- **Core Mechanism**: Orchestrator handles workflow, model just responds to notifications
+
+## 🔄 Migration Guide (from v1.0)
+
+### Step 1: Backup Existing Project
+
+```bash
+cp -r myproject myproject_backup
+```
+
+### Step 2: Update Skill
+
+```bash
+cd ~/.claude/skills/product-lifecycle
+git pull origin main
+# Or re-download from GitHub
+```
+
+### Step 3: Run Migration
+
+Orchestrator will auto-migrate legacy `steps/` format to `checkpoint.json`:
+
+```bash
+./orchestrator status
+# Output:
+# ⚠ Migrating from legacy steps/ format...
+# ✓ Migrated 5 phases from legacy format
+```
+
+### Step 4: Verify Migration
+
+```bash
+./orchestrator status
+# Should show:
+# Status: migrated
+# Completed Phases: [phase-1-init, phase-3-validate-prd, ...]
+```
+
+### Step 5: Use New Commands
+
+All legacy commands have been removed. Use orchestrator commands:
+
+| Legacy Command | New Command |
+|----------------|-------------|
+| `./lifecycle init` | `./orchestrator run --intent new-product` |
+| `./lifecycle validate` | Orchestrator auto-validates |
+| `./lifecycle draft prd` | Orchestrator auto-drafts at Phase 2 |
+| `./lifecycle plan` | Orchestrator auto-plans at Phase 8 |
+| `./lifecycle gate --iteration 1` | Orchestrator auto-gates at Phase 9 |
+| `./lifecycle change prd` | `./orchestrator run --intent prd-change` |
+
+### Troubleshooting
+
+**Problem**: Migration failed
+
+**Solution**:
+1. Check `.lifecycle/steps/` directory exists
+2. Check step files are valid JSON
+3. Manually delete `.lifecycle/checkpoint.json` and re-run `./orchestrator status`
+
+**Problem**: Resume doesn't work
+
+**Solution**:
+1. Check `.lifecycle/checkpoint.json` exists
+2. Check `current_phase` field is set
+3. Check `.lifecycle/notification.json` exists
 
 ## 📄 License
 

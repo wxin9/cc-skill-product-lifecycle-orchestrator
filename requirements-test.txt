@@ -1,0 +1,8 @@
+# Test dependencies for Product-Lifecycle
+
+# Testing framework
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Optional: Better test output
+pytest-sugar>=0.9.7

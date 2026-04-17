@@ -5,6 +5,99 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-04-16
+
+### ⚠ BREAKING CHANGES
+
+**All legacy commands have been removed**. This is a complete architecture refactor from "model-driven" to "script-orchestrated" workflow.
+
+- ❌ **Removed**: All legacy commands (`init`, `validate`, `draft`, `plan`, `outline`, `gate`, `change`, etc.)
+- ✅ **Added**: Orchestrator commands (`run`, `resume`, `status`, `cancel`)
+
+**Migration**: Orchestrator auto-migrates legacy `steps/` format to `checkpoint.json`. See README.md for migration guide.
+
+### Added
+
+- **Orchestrator Engine** (`scripts/core/orchestrator.py`) — Script-orchestrated workflow engine
+  - Auto-executes phase sequences based on intent
+  - State machine with phase-level transitions
+  - Interaction pause mechanism
+  - Failure recovery with retry support
+  - Resume from checkpoint
+
+- **PHASES Definition Table** (`scripts/core/phases.py`) — Declarative phase configuration
+  - 11 phases (Phase 0-10) with 15+ fields each
+  - Dependencies, artifacts, validation rules, failure strategies
+  - Intent triggers mapping
+
+- **Checkpoint Manager** (`scripts/core/checkpoint_manager.py`) — Phase-level state management
+  - Records completed phases, current phase, phase data
+  - Auto-migrates legacy `steps/` format
+  - Resume from breakpoint support
+
+- **Intent Resolver** (`scripts/core/intent_resolver.py`) — User input to intent mapping
+  - Regex pattern matching
+  - Priority ranking (bug-fix=1, prd-change=3, new-product=9)
+  - Compound intent handling (multiple intents in sequence)
+
+- **Notification Mechanism** — Dual notification (stdout + JSON file)
+  - `pause_for_user` — Interaction pause notification
+  - `validation_failed` — Validation failure notification
+  - `dod_failed` — DoD failure notification
+  - Includes suggested actions for model
+
+- **Orchestrator CLI** (`scripts/__main__.py`) — New CLI with only orchestrator commands
+  - `orchestrator run --intent <intent> --user-input "<input>"`
+  - `orchestrator resume --from-phase <phase-id>`
+  - `orchestrator status`
+  - `orchestrator cancel`
+
+- **Orchestrator Wrapper Script** (`./orchestrator`) — Bash wrapper for convenience
+
+### Changed
+
+- **SKILL.md** — Completely rewritten (871 lines → ~300 lines)
+  - Simplified to orchestrator usage
+  - Removed all legacy command references
+  - Added interaction pause handling
+  - Added failure recovery instructions
+
+- **README.md** — Updated with breaking changes warning and migration guide
+  - Added v2.0.0 new features section
+  - Replaced legacy command examples with orchestrator examples
+  - Added migration guide from v1.0
+
+### Removed
+
+- **All legacy CLI commands** — Removed from `__main__.py`
+  - `init`, `validate`, `draft`, `plan`, `outline`, `gate`, `change`, `task`, `adr`, `velocity`, `risk`, `dod`, `snapshot`, `status`, `pause`, `resume`, `cancel`, `step`, `manual`
+  - Users must use orchestrator commands instead
+
+- **Legacy workflow** — No longer model-driven
+  - Model no longer needs to remember next command
+  - Orchestrator handles entire workflow automatically
+
+### Migration Path
+
+1. Backup existing project: `cp -r myproject myproject_backup`
+2. Update skill: `git pull origin main`
+3. Run migration: `./orchestrator status` (auto-migrates `steps/` to `checkpoint.json`)
+4. Verify: `./orchestrator status` should show migrated phases
+5. Use new commands: All legacy commands removed, use orchestrator commands
+
+### Technical Details
+
+**Architecture Refactor**:
+- **Before**: Model reads SKILL.md → manually calls `./lifecycle` commands → commands execute independently → model remembers next step
+- **After**: Model calls `./orchestrator run --intent <intent>` → orchestrator auto-executes phase sequence → pauses at interaction points → notifies model → model handles interaction → orchestrator resumes
+
+**Key Benefits**:
+- ✅ No model memory needed — orchestrator handles workflow
+- ✅ Guaranteed execution — all phases run to completion
+- ✅ Interaction handling — orchestrator pauses for user input
+- ✅ Failure recovery — orchestrator pauses on failure, model fixes and resumes
+- ✅ State persistence — checkpoint records phase-level state
+
 ## [1.1.0] - 2026-04-15
 
 ### Added
