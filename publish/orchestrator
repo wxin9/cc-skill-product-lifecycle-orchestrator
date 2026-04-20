@@ -1,0 +1,22 @@
+#!/bin/bash
+# Product-Lifecycle Orchestrator Wrapper Script v2.0
+#
+# This script wraps the Python orchestrator CLI for convenience.
+#
+# Usage:
+#   ./orchestrator run --intent new-product --user-input "我想做一个产品"
+#   ./orchestrator resume --from-phase phase-2-draft-prd
+#   ./orchestrator status
+#   ./orchestrator cancel
+
+set -e
+
+# Find skill path
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_PATH="$SCRIPT_DIR"
+
+# Set PYTHONPATH
+export PYTHONPATH="$SKILL_PATH"
+
+# Execute orchestrator
+python -m scripts orchestrator "$@"

@@ -1,0 +1,23 @@
+{
+  "name": "product-lifecycle",
+  "version": "2.0.1",
+  "description": "AI 协作 + 强制门控的产品全生命周期管理",
+  "author": "Claude Code",
+  "created_at": "2026-04-04",
+  "tier": "stateful",
+  "trigger_keywords": [
+    "产品设计", "PRD", "需求文档", "技术架构", "迭代规划",
+    "product-lifecycle", "产品管理",
+    "从零开始做产品", "迭代门控", "ADR", "velocity追踪", "DoD", "Sprint Review",
+    "test graph", "dependency review", "test knowledge graph", "维度"
+  ],
+  "model_compatibility": {
+    "claude-opus-4-6": "full",
+    "claude-sonnet-4-6": "full",
+    "claude-haiku-4-5": "partial"
+  },
+  "dependencies": {
+    "python": ">=3.8",
+    "stdlib_only": true
+  }
+}

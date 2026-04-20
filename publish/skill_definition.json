@@ -1,0 +1,65 @@
+{
+  "name": "product-lifecycle",
+  "version": "2.0.1",
+  "tier": "stateful",
+  "phases": [
+    {
+      "id": "project-bootstrapped",
+      "description": "初始化：文档结构 + DoD配置 + Risk Register + ADR目录",
+      "artifacts": [
+        {"path": "Docs/INDEX.md", "min_bytes": 200},
+        {"path": ".lifecycle/config.json", "min_bytes": 100},
+        {"path": ".lifecycle/dod.json", "min_bytes": 50},
+        {"path": ".lifecycle/risk_register.json", "min_bytes": 50},
+        {"path": "Docs/adr/INDEX.md", "min_bytes": 80}
+      ]
+    },
+    {
+      "id": "prd-drafted",
+      "description": "AI协作起草PRD初稿（Claude生成 → 用户审核修改）",
+      "artifacts": [
+        {"path": "Docs/product/PRD.md", "min_bytes": 800}
+      ]
+    },
+    {
+      "id": "prd-validated",
+      "description": "PRD验证通过 + 自动快照（无需手动备份）",
+      "artifacts": [
+        {"path": ".lifecycle/snapshots/prd_latest.md", "min_bytes": 800},
+        {"path": ".lifecycle/steps/prd-score.json", "min_bytes": 30}
+      ]
+    },
+    {
+      "id": "arch-designed",
+      "description": "AI协作架构设计：项目类型识别 + ADR初稿 + 架构草案",
+      "artifacts": [
+        {"path": "Docs/tech/ARCH.md", "min_bytes": 800}
+      ]
+    },
+    {
+      "id": "arch-validated",
+      "description": "架构验证 + ADR注册 + 快照",
+      "artifacts": [
+        {"path": ".lifecycle/snapshots/arch_latest.md", "min_bytes": 800},
+        {"path": ".lifecycle/steps/arch-score.json", "min_bytes": 30}
+      ]
+    },
+    {
+      "id": "test-outline-ready",
+      "description": "自适应测试大纲：按项目类型选维度（Web/CLI/Mobile/Data/Microservices）",
+      "artifacts": [
+        {"path": "Docs/tests/MASTER_OUTLINE.md", "min_bytes": 600},
+        {"path": ".lifecycle/test_graph.json", "min_bytes": 200, "description": "测试知识图谱 (v1.1)"}
+      ]
+    },
+    {
+      "id": "iterations-planned",
+      "description": "Velocity感知迭代规划：每迭代有E2E验收标准 + 工时估算",
+      "artifacts": [
+        {"path": "Docs/iterations/INDEX.md", "min_bytes": 200},
+        {"path": ".lifecycle/velocity.json", "min_bytes": 50}
+      ]
+    }
+  ],
+  "cancel_triggers": ["cancel", "取消", "stop"]
+}

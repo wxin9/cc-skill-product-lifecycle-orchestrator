@@ -32,8 +32,10 @@ env/
 *.swo
 *~
 
-# Project lifecycle specific
+# Project lifecycle runtime data
+Docs/
 .lifecycle/
+.tasks/
 
 # OS
 .DS_Store
@@ -45,5 +47,6 @@ Thumbs.db
 # Eval outputs
 evals/output/
 
-# Task state
-.tasks/
+# Development artifacts
+*.egg-info/
+.eggs/
