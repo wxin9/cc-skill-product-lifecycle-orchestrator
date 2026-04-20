@@ -19,4 +19,4 @@ SKILL_PATH="$SCRIPT_DIR"
 export PYTHONPATH="$SKILL_PATH"
 
 # Execute orchestrator
-python -m scripts orchestrator "$@"
+python3 -m scripts orchestrator "$@"
