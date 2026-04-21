@@ -221,34 +221,53 @@ class TestPRDValidation:
         prd_path = tmp_path / "PRD.md"
         prd_content = """# Product Requirements Document
 
-## 1. Introduction
+## 1. Product Vision
 
-This is a product introduction with enough content to pass validation.
+This product helps teams manage their product lifecycle from ideation to delivery.
+It solves the problem of fragmented tooling by providing an integrated workflow
+that covers PRD creation, architecture design, test planning, and iteration tracking.
+Target users are product managers, developers, and QA engineers in agile teams.
 
-## 2. Goals
+## 2. Core Features
 
-- Goal 1: Achieve something
-- Goal 2: Deliver value
-- Goal 3: Satisfy users
+- Feature 1: PRD drafting with AI assistance
+- Feature 2: Architecture review and validation
+- Feature 3: Test outline generation
+- Feature 4: Sprint planning and velocity tracking
 
-## 3. Features
+## 3. User Roles
 
-### Feature 1: User Login
+- Product Manager: creates and manages PRDs
+- Developer: reviews architecture and implements features
+- QA Engineer: writes and runs test cases
 
-Description of user login feature.
+## 4. User Flow
 
-**User Stories**:
-- As a user, I want to login so I can access my account.
+1. User identifies product need and initiates new-product workflow
+2. System analyzes requirements and generates solution options
+3. User selects solution and approves PRD draft
+4. System validates PRD quality score
 
-## 4. Non-Functional Requirements
+## 5. Non-Functional Requirements
 
-- Performance: Response time < 200ms
-- Security: The system shall encrypt all passwords
+- Performance: API response time < 200ms (p99)
+- Reliability: 99.9% uptime SLA
+- Security: All data encrypted at rest and in transit
 
-## 5. Constraints
+## 6. Scope
 
-- Budget: Limited to $100k
-- Timeline: Must launch in Q2
+In Scope:
+- PRD creation and validation
+- Architecture design workflow
+
+Out of Scope:
+- Code generation
+- Deployment automation
+
+## 7. Risks
+
+- Risk: AI model quality degradation. Mitigation: fallback to manual templates.
+- Risk: User adoption resistance. Mitigation: onboarding guides and tutorials.
 """
         prd_path.write_text(prd_content)
 
@@ -362,42 +381,79 @@ class TestArchitectureValidation:
         arch_path = tmp_path / "ARCHITECTURE.md"
         arch_content = """# Architecture Document
 
-## 1. Introduction
+## 1. System Overview
 
-This is the architecture introduction.
+The system provides product lifecycle management. External dependencies:
 
-## 2. System Overview
+- Anthropic API: AI assistance for PRD and architecture drafting
+- GitHub API: code repository integration and CI/CD triggers
+- PostgreSQL: primary data store for workflow state
 
-The system consists of multiple components working together.
+## 2. Tech Stack
 
-## 3. High-Level Design
+We chose these technologies for the following reasons:
 
-### Components
+- Frontend: React 18, TypeScript — chose React because of component reusability
+- Backend: Python 3.9, FastAPI — chose FastAPI because of async support and speed
+- Database: PostgreSQL 15 — chose PostgreSQL for ACID compliance and complex queries
+- Cache: Redis — suitable for session management and rate limiting
 
-- Frontend: React application
-- Backend: Node.js API
-- Database: PostgreSQL
+## 3. High-Level Architecture
 
-## 4. Data Model
+```
+┌──────────────┐     REST API    ┌──────────────────┐
+│   Frontend   │ ─────────────→  │  FastAPI Backend  │
+│  (React/TS)  │                 │  (Orchestrator)   │
+└──────────────┘                 └────────┬─────────┘
+                                          │
+                              ┌───────────┴──────────┐
+                              │                      │
+                     ┌────────▼───────┐   ┌─────────▼──────┐
+                     │  PostgreSQL    │   │     Redis       │
+                     │  (State/Data)  │   │   (Sessions)    │
+                     └────────────────┘   └────────────────┘
+```
 
-### User Entity
+## 4. Components
 
-- id: UUID
-- name: String
-- email: String
+| Module | Responsibility | Technology |
+|--------|----------------|------------|
+| OrchestratorService | Coordinates phase execution | Python |
+| CheckpointManager | Persists workflow state | Python + PostgreSQL |
+| DocValidator | Validates PRD and arch documents | Python + regex |
+| SolutionAnalyzer | Analyzes requirements and proposes solutions | Python + AI |
 
-## 5. API Design
+## 5. Data Model
 
-### Endpoints
+| Field | Type | Description |
+|-------|------|-------------|
+| project_id | UUID | Primary key |
+| status | String | Workflow status |
+| current_phase | String | Active phase ID |
+| completed_phases | Array | List of completed phase IDs |
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /users | List users |
-| POST | /users | Create user |
+## 6. API Design
 
-## 6. Deployment
+Main endpoints:
 
-Deployed on AWS using containers.
+- POST /orchestrator/run — start a new workflow
+- POST /orchestrator/resume — resume from a specific phase
+- GET /orchestrator/status — get current workflow status
+
+## 7. Deployment
+
+Deployed on AWS ECS using Docker containers. CI/CD via GitHub Actions.
+- Database: RDS PostgreSQL (Multi-AZ for high availability)
+- Cache: ElastiCache Redis
+- Deployment steps: build → test → push image → rolling deploy
+
+## 8. Architecture Decision Records
+
+### ADR-001: PostgreSQL over NoSQL
+Background: Need to persist workflow state with complex queries.
+Decision: Use PostgreSQL for relational integrity and ACID compliance.
+Status: Accepted
+Rationale: Strong consistency required; workflow phases have strict dependencies.
 """
         arch_path.write_text(arch_content)
 
@@ -429,41 +485,56 @@ class TestTestOutlineValidation:
     def test_validate_test_outline_passes_minimal_document(self, tmp_path):
         """Test that Test Outline validation passes a minimal valid document."""
         outline_path = tmp_path / "MASTER_OUTLINE.md"
-        outline_content = """# Test Outline
+        outline_content = """# Master Test Outline
 
-## Feature 1: User Login
+## F01 — User Authentication
 
-### Scenario 1.1: Successful Login
+### TST-F01-S01 Successful Login
 
-**Given**: User is on login page
-**When**: User enters valid credentials
-**Then**: User is redirected to dashboard
+前置条件: User account exists with valid credentials
 
-### Scenario 1.2: Invalid Credentials
+测试步骤:
+1. Navigate to login page
+2. Enter valid username and password
+3. Click Submit button
+4. Verify redirect to dashboard
 
-**Given**: User is on login page
-**When**: User enters invalid credentials
-**Then**: Error message is displayed
+期望结果: User is redirected to dashboard and session token is set
 
-## Feature 2: User Registration
+### TST-F01-S02 Invalid Password
 
-### Scenario 2.1: Successful Registration
+前置条件: User account exists
 
-**Given**: User is on registration page
-**When**: User fills all required fields
-**Then**: Account is created
+测试步骤:
+1. Navigate to login page
+2. Enter valid username but wrong password
+3. Click Submit button
 
-### Scenario 2.2: Duplicate Email
+期望结果: Error message displayed, login rejected
 
-**Given**: User is on registration page
-**When**: User enters existing email
-**Then**: Error message is displayed
+## F02 — User Registration
 
-### Scenario 2.3: Invalid Email Format
+### TST-F02-S01 Successful Registration
 
-**Given**: User is on registration page
-**When**: User enters invalid email
-**Then**: Validation error is shown
+前置条件: Email not already registered in system
+
+测试步骤:
+1. Navigate to registration page
+2. Fill all required fields with valid data
+3. Click Register button
+
+期望结果: Account created, confirmation email sent
+
+### TST-F02-S02 Duplicate Email Error
+
+前置条件: Email already registered in system
+
+测试步骤:
+1. Navigate to registration page
+2. Enter an already-registered email
+3. Click Register button
+
+期望结果: Error message "Email already in use" displayed, no new account created
 """
         outline_path.write_text(outline_content)
 

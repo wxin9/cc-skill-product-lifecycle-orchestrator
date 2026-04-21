@@ -77,7 +77,9 @@ PHASES: List[PhaseDefinition] = [
         "max_retries": 0,
         "pause_for": "等待用户确认执行计划",
         "timeout_hint": None,
-        "intent_triggers": ["*"]
+        "intent_triggers": ["*"],
+        "condition": None,
+        "branches": None
     },
     {
         "id": "phase-1-analyze-solution",
@@ -122,7 +124,9 @@ PHASES: List[PhaseDefinition] = [
         "max_retries": 1,
         "pause_for": None,
         "timeout_hint": None,
-        "intent_triggers": ["new-product", "from-scratch"]
+        "intent_triggers": ["new-product", "from-scratch"],
+        "condition": None,
+        "branches": None
     },
     {
         "id": "phase-3-draft-prd",
@@ -142,7 +146,9 @@ PHASES: List[PhaseDefinition] = [
         "max_retries": 0,
         "pause_for": "等待用户审核 PRD 草案，补充 [❓待确认] 标注处",
         "timeout_hint": "建议在 24h 内完成审核",
-        "intent_triggers": ["new-product", "new-feature", "prd-change"]
+        "intent_triggers": ["new-product", "new-feature", "prd-change"],
+        "condition": None,
+        "branches": None
     },
     {
         "id": "phase-4-validate-prd",
@@ -163,7 +169,9 @@ PHASES: List[PhaseDefinition] = [
         "max_retries": 3,
         "pause_for": None,
         "timeout_hint": None,
-        "intent_triggers": ["new-product", "new-feature", "prd-change"]
+        "intent_triggers": ["new-product", "new-feature", "prd-change"],
+        "condition": None,
+        "branches": None
     },
     {
         "id": "phase-5-arch-interview",
@@ -184,7 +192,9 @@ PHASES: List[PhaseDefinition] = [
         "max_retries": 0,
         "pause_for": "等待用户回答架构访谈问题（6 个问题）",
         "timeout_hint": None,
-        "intent_triggers": ["new-product", "arch-change"]
+        "intent_triggers": ["new-product", "arch-change"],
+        "condition": None,
+        "branches": None
     },
     {
         "id": "phase-6-draft-arch",
@@ -204,7 +214,9 @@ PHASES: List[PhaseDefinition] = [
         "max_retries": 0,
         "pause_for": "等待用户审核架构草案，对 ADR 做决策",
         "timeout_hint": None,
-        "intent_triggers": ["new-product", "arch-change"]
+        "intent_triggers": ["new-product", "arch-change"],
+        "condition": None,
+        "branches": None
     },
     {
         "id": "phase-7-validate-arch",
@@ -225,7 +237,9 @@ PHASES: List[PhaseDefinition] = [
         "max_retries": 3,
         "pause_for": None,
         "timeout_hint": None,
-        "intent_triggers": ["new-product", "arch-change"]
+        "intent_triggers": ["new-product", "arch-change"],
+        "condition": None,
+        "branches": None
     },
     {
         "id": "phase-8-test-outline",
@@ -251,7 +265,9 @@ PHASES: List[PhaseDefinition] = [
         "max_retries": 2,
         "pause_for": None,
         "timeout_hint": None,
-        "intent_triggers": ["new-product", "test-change", "prd-change"]
+        "intent_triggers": ["new-product", "test-change", "prd-change"],
+        "condition": None,
+        "branches": None
     },
     {
         "id": "phase-9-iterations",
@@ -275,7 +291,9 @@ PHASES: List[PhaseDefinition] = [
         "max_retries": 1,
         "pause_for": None,
         "timeout_hint": None,
-        "intent_triggers": ["new-product", "new-iteration", "prd-change"]
+        "intent_triggers": ["new-product", "new-iteration", "prd-change"],
+        "condition": None,
+        "branches": None
     },
     {
         "id": "phase-10-iter-exec",
@@ -293,7 +311,9 @@ PHASES: List[PhaseDefinition] = [
         "max_retries": 0,
         "pause_for": "等待用户完成开发任务，运行测试，通过 DoD 检查",
         "timeout_hint": None,
-        "intent_triggers": ["new-iteration", "continue-iter"]
+        "intent_triggers": ["new-iteration", "continue-iter"],
+        "condition": None,
+        "branches": None
     },
     {
         "id": "phase-11-change",
@@ -313,7 +333,9 @@ PHASES: List[PhaseDefinition] = [
         "max_retries": 1,
         "pause_for": None,
         "timeout_hint": None,
-        "intent_triggers": ["prd-change", "code-change", "test-failure", "bug-fix", "gap"]
+        "intent_triggers": ["prd-change", "code-change", "test-failure", "bug-fix", "gap"],
+        "condition": None,
+        "branches": None
     }
 ]
 
@@ -351,10 +373,19 @@ def get_ordered_phases() -> List[PhaseDefinition]:
 def validate_phases() -> List[str]:
     """
     Validate phase definitions for consistency.
+
+    Checks:
+    - depends_on references existing phase IDs
+    - blocks references existing phase IDs
+    - artifact paths are relative
+    - No circular dependencies (DFS)
+    - depends_on phases have lower order values than current phase
+
     Returns list of error messages (empty if valid).
     """
     errors = []
     phase_ids = {p["id"] for p in PHASES}
+    phase_by_id = {p["id"]: p for p in PHASES}
 
     for phase in PHASES:
         # Check dependencies exist
@@ -363,19 +394,48 @@ def validate_phases() -> List[str]:
                 errors.append(f"Phase {phase['id']} depends on non-existent phase: {dep}")
 
         # Check blocks exist
-        for block in phase["blocks"]:
+        for block in phase.get("blocks", []):
             if block not in phase_ids:
                 errors.append(f"Phase {phase['id']} blocks non-existent phase: {block}")
 
-        # Check command exists (if specified)
-        if phase["command"]:
-            # Commands will be validated by orchestrator
-            pass
+        # Check artifact paths are relative
+        for artifact in phase.get("artifacts", []):
+            if artifact.get("path", "").startswith("/"):
+                errors.append(
+                    f"Phase {phase['id']} artifact path should be relative: {artifact['path']}"
+                )
 
-        # Check artifacts paths are relative
-        for artifact in phase["artifacts"]:
-            if artifact["path"].startswith("/"):
-                errors.append(f"Phase {phase['id']} artifact path should be relative: {artifact['path']}")
+    # Check for circular dependencies using DFS
+    def has_cycle(phase_id: str, visited: set, rec_stack: set) -> bool:
+        visited.add(phase_id)
+        rec_stack.add(phase_id)
+        phase = phase_by_id.get(phase_id)
+        if phase:
+            for dep in phase.get("depends_on", []):
+                if dep not in visited:
+                    if has_cycle(dep, visited, rec_stack):
+                        return True
+                elif dep in rec_stack:
+                    return True
+        rec_stack.discard(phase_id)
+        return False
+
+    visited: set = set()
+    for phase in PHASES:
+        if phase["id"] not in visited:
+            if has_cycle(phase["id"], visited, set()):
+                errors.append(f"Circular dependency detected involving phase: {phase['id']}")
+
+    # Check that depends_on phases have lower order values
+    for phase in PHASES:
+        phase_order = phase.get("order", 0)
+        for dep_id in phase.get("depends_on", []):
+            dep_phase = phase_by_id.get(dep_id)
+            if dep_phase and dep_phase.get("order", 0) >= phase_order:
+                errors.append(
+                    f"Phase {phase['id']} (order={phase_order}) depends on "
+                    f"{dep_id} (order={dep_phase['order']}), dependency should have lower order"
+                )
 
     return errors
 

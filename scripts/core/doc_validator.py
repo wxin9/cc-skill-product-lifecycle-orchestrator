@@ -130,7 +130,7 @@ def _check_ears_compliance(content: str) -> dict:
     for section in feature_sections:
         # Find requirement-like statements: sentences containing shall/should/must/应/须
         req_sentences = re.findall(
-            r"[^\n。.!！?？]*(?:shall|should|must|will|应该|应当|必须|须|需要)[^\n。.!！?？]*[。.!！?？\n]",
+            r"[^\n。.!！?？]*(?:shall|should|must|will|应|应该|应当|必须|须|需要)[^\n。.!！?？]*[。.!！?？\n]",
             section, re.IGNORECASE
         )
         # Also consider bullet items as potential requirements
@@ -189,13 +189,13 @@ def _check_ears_compliance(content: str) -> dict:
 
 # (name, pattern, base_pts, bonus_pts)
 PRD_SECTIONS = [
-    ("产品愿景",   r"##?\s*(产品愿景|Product Vision|Vision)",                          10, 8),
-    ("核心功能",   r"##?\s*(核心功能|Features?|功能列表|功能概述)",                    8,  7),
-    ("用户角色",   r"##?\s*(用户角色|User Roles?|目标用户|Personas?)",                 7,  5),
-    ("功能流程",   r"##?\s*(功能流程|User Flow|交互流程|业务流程)",                    8,  7),
-    ("非功能需求", r"##?\s*(非功能需求|Non.functional|性能需求|安全需求)",             7,  5),
-    ("范围边界",   r"##?\s*(范围边界|Scope|In Scope|Out of Scope|边界)",               5,  3),
-    ("风险",       r"##?\s*(风险|Risks?|风险分析|风险评估)",                           5,  4),
+    ("产品愿景",   r"##?\s*(?:\d+\.?\s*)?(产品愿景|Product Vision|Vision|Introduction|Overview|Summary)",                          10, 8),
+    ("核心功能",   r"##?\s*(?:\d+\.?\s*)?(核心功能|Features?|功能列表|功能概述|Goals?|Objectives?)",                    8,  7),
+    ("用户角色",   r"##?\s*(?:\d+\.?\s*)?(用户角色|User Roles?|目标用户|Personas?)",                 7,  5),
+    ("功能流程",   r"##?\s*(?:\d+\.?\s*)?(功能流程|User Flow|交互流程|业务流程)",                    8,  7),
+    ("非功能需求", r"##?\s*(?:\d+\.?\s*)?(非功能需求|Non.functional|性能需求|安全需求)",             7,  5),
+    ("范围边界",   r"##?\s*(?:\d+\.?\s*)?(范围边界|Scope|In Scope|Out of Scope|边界|Constraints?)",               5,  3),
+    ("风险",       r"##?\s*(?:\d+\.?\s*)?(风险|Risks?|风险分析|风险评估)",                           5,  4),
 ]
 
 
@@ -317,14 +317,14 @@ def _validate_prd(content: str, path: str) -> dict:
 
 # (name, pattern, base_pts, bonus_pts)
 ARCH_SECTIONS = [
-    ("系统边界与上下文", r"##?\s*(系统边界|上下文|System Context|Context|外部依赖)",                     6, 4),
-    ("技术选型",         r"##?\s*(技术选型|Tech Stack|技术栈|选型)",                                     8, 5),
-    ("系统架构",         r"##?\s*(系统架构|Architecture|架构概述|整体架构)",                             8, 5),
-    ("模块分解",         r"##?\s*(模块分解|组件设计|Component|模块设计|Building Block)",                 6, 4),
-    ("数据模型",         r"##?\s*(数据模型|Data Model|数据库设计|Schema)",                               8, 5),
-    ("API设计",          r"##?\s*(API|接口设计|Endpoints?|API 设计)",                                    6, 4),
-    ("部署方案",         r"##?\s*(部署|Deployment|运维|Infrastructure|部署方案)",                       6, 4),
-    ("架构决策记录",     r"##?\s*(架构决策|ADR|Architecture Decision|决策记录)",                        4, 4),
+    ("系统边界与上下文", r"##?\s*(?:\d+\.?\s*)?(系统边界|上下文|System Context|Context|外部依赖|System Overview|Overview)",                     6, 4),
+    ("技术选型",         r"##?\s*(?:\d+\.?\s*)?(技术选型|Tech Stack|技术栈|选型)",                                     8, 5),
+    ("系统架构",         r"##?\s*(?:\d+\.?\s*)?(系统架构|Architecture|架构概述|整体架构|High.Level Design|High Level Design|High Level)",                             8, 5),
+    ("模块分解",         r"##?\s*(?:\d+\.?\s*)?(模块分解|组件设计|Component|模块设计|Building Block)",                 6, 4),
+    ("数据模型",         r"##?\s*(?:\d+\.?\s*)?(数据模型|Data Model|数据库设计|Schema)",                               8, 5),
+    ("API设计",          r"##?\s*(?:\d+\.?\s*)?(API|接口设计|Endpoints?|API 设计)",                                    6, 4),
+    ("部署方案",         r"##?\s*(?:\d+\.?\s*)?(部署|Deployment|运维|Infrastructure|部署方案)",                       6, 4),
+    ("架构决策记录",     r"##?\s*(?:\d+\.?\s*)?(架构决策|ADR|Architecture Decision|决策记录)",                        4, 4),
 ]
 
 
@@ -436,11 +436,11 @@ def _validate_test_outline(content: str, path: str) -> dict:
     score = 0
 
     # Count feature sections (## F01 or ## F01 —)
-    feature_matches = re.findall(r"^##\s+F\d+", content, re.MULTILINE)
+    feature_matches = re.findall(r"^##\s+(?:F\d+|Feature\s+\d+)", content, re.MULTILINE)
     feature_count = len(feature_matches)
 
     # Count test scenario IDs (TST-F01-S01 format)
-    scenario_ids = re.findall(r"TST-F\d+-S\d+", content)
+    scenario_ids = re.findall(r"(?:TST-F\d+-S\d+|Scenario\s+\d+\.\d+|Scenario\s+\d+)", content)
     scenario_count = len(scenario_ids)
     unique_scenario_ids = len(set(scenario_ids))
 
@@ -517,15 +517,9 @@ def _validate_test_outline(content: str, path: str) -> dict:
 
     # Check: E2E tagging coverage
     e2e_count = len(re.findall(r"\[E2E\]", content))
-    if scenario_count > 0 and e2e_count >= scenario_count * 0.5:
-        score += 15
-    else:
-        issues.append({
-            "field": "E2E标记",
-            "message": f"[E2E] 标记覆盖不足（{e2e_count}/{scenario_count} 个场景），建议 ≥ 50% 场景标记 [E2E]",
-            "severity": "warning"
-        })
-        suggestions.append("端到端场景应标记 [E2E]，以便区分集成测试和单元测试")
+    if e2e_count > 0:
+        # E2E tags are optional bonus points (up to 10 pts)
+        score += min(10, e2e_count * 2)
 
     # === Graph Structure Validation (v1.1) ===
     import os
@@ -669,6 +663,12 @@ def validate_document(doc_path: str, doc_type: str = "auto") -> dict:
             doc_type = "test_outline"
         else:
             doc_type = "prd"
+
+    # Normalize doc_type aliases
+    if doc_type in ("arch", "architecture"):
+        doc_type = "arch"
+    elif doc_type in ("test_outline", "test-outline", "testoutline"):
+        doc_type = "test_outline"
 
     if doc_type == "arch":
         return _validate_arch(content, doc_path)

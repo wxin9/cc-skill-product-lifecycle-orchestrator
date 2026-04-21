@@ -112,7 +112,7 @@ class CheckpointManager:
         """Initialize a new checkpoint."""
         with self._lock:  # v2.2: Thread-safe
             checkpoint = {
-                "version": "2.0",
+                "version": "2.1",
                 "project_name": project_name,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -452,6 +452,25 @@ class CheckpointManager:
 
             print(f"✓ Migrated checkpoint from v2.0 to v2.1 ({len(new_completed)} phases)")
             self._dirty = True
+
+        # Validate migrated phase IDs against PHASES registry
+        try:
+            from .phases import PHASES
+            valid_phase_ids = {p["id"] for p in PHASES}
+
+            invalid_completed = [pid for pid in checkpoint["completed_phases"] if pid not in valid_phase_ids]
+            if invalid_completed:
+                print(f"⚠ Migration warning: Unknown phase IDs in completed_phases: {invalid_completed}")
+
+            current = checkpoint.get("current_phase")
+            if current and current not in valid_phase_ids:
+                print(f"⚠ Migration warning: Unknown current_phase: {current}")
+
+            invalid_data = [pid for pid in checkpoint.get("phase_data", {}).keys() if pid not in valid_phase_ids]
+            if invalid_data:
+                print(f"⚠ Migration warning: Unknown phase IDs in phase_data: {invalid_data}")
+        except ImportError:
+            pass  # Skip validation if PHASES not available
 
         return checkpoint
 

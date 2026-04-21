@@ -229,7 +229,7 @@ class TestRollbackMechanism:
         checkpoint["metadata"]["rollback_points"] = [
             {
                 "id": "rp-001",
-                "phase_id": "phase-1-init",
+                "phase_id": "phase-2-init",
                 "timestamp": "2026-04-16T10:00:00Z",
                 "description": "After initialization"
             }
@@ -250,26 +250,26 @@ class TestRollbackMechanism:
         checkpoint = mgr.init("test-project", "new-product", "test input")
 
         # Record some phases as completed
-        mgr.record_phase_complete("phase-1-init")
-        mgr.record_phase_complete("phase-2-draft-prd")
+        mgr.record_phase_complete("phase-2-init")
+        mgr.record_phase_complete("phase-3-draft-prd")
 
         # Create rollback point
         rollback_point = mgr.create_rollback_point(
-            "phase-2-draft-prd",
+            "phase-3-draft-prd",
             "After PRD draft"
         )
 
         # Verify rollback point structure
         assert "id" in rollback_point
-        assert rollback_point["phase_id"] == "phase-2-draft-prd"
+        assert rollback_point["phase_id"] == "phase-3-draft-prd"
         assert rollback_point["description"] == "After PRD draft"
         assert "timestamp" in rollback_point
         assert "checkpoint_snapshot" in rollback_point
 
         # Verify snapshot contains correct state
         snapshot = rollback_point["checkpoint_snapshot"]
-        assert "phase-1-init" in snapshot["completed_phases"]
-        assert "phase-2-draft-prd" in snapshot["completed_phases"]
+        assert "phase-2-init" in snapshot["completed_phases"]
+        assert "phase-3-draft-prd" in snapshot["completed_phases"]
 
     def test_list_rollback_points(self, tmp_path):
         """Test listing rollback points."""
@@ -279,15 +279,15 @@ class TestRollbackMechanism:
         mgr.init("test-project", "new-product", "test input")
 
         # Create multiple rollback points
-        mgr.create_rollback_point("phase-1-init", "First rollback point")
-        mgr.create_rollback_point("phase-2-draft-prd", "Second rollback point")
+        mgr.create_rollback_point("phase-2-init", "First rollback point")
+        mgr.create_rollback_point("phase-3-draft-prd", "Second rollback point")
 
         # List rollback points
         rollback_points = mgr.list_rollback_points()
 
         assert len(rollback_points) == 2
-        assert rollback_points[0]["phase_id"] == "phase-1-init"
-        assert rollback_points[1]["phase_id"] == "phase-2-draft-prd"
+        assert rollback_points[0]["phase_id"] == "phase-2-init"
+        assert rollback_points[1]["phase_id"] == "phase-3-draft-prd"
 
     def test_rollback_to_point(self, tmp_path):
         """Test rolling back to a specific point."""
@@ -297,18 +297,18 @@ class TestRollbackMechanism:
         mgr.init("test-project", "new-product", "test input")
 
         # Complete some phases
-        mgr.record_phase_complete("phase-1-init")
-        mgr.record_phase_complete("phase-2-draft-prd")
+        mgr.record_phase_complete("phase-2-init")
+        mgr.record_phase_complete("phase-3-draft-prd")
 
         # Create rollback point
         rollback_point = mgr.create_rollback_point(
-            "phase-2-draft-prd",
+            "phase-3-draft-prd",
             "Before validation"
         )
 
         # Complete more phases
-        mgr.record_phase_complete("phase-3-validate-prd")
-        mgr.record_phase_complete("phase-4-arch-interview")
+        mgr.record_phase_complete("phase-4-validate-prd")
+        mgr.record_phase_complete("phase-5-arch-interview")
 
         # Verify current state
         checkpoint = mgr.load()
@@ -321,9 +321,9 @@ class TestRollbackMechanism:
         # Verify rollback
         checkpoint = mgr.load()
         assert len(checkpoint["completed_phases"]) == 2
-        assert "phase-1-init" in checkpoint["completed_phases"]
-        assert "phase-2-draft-prd" in checkpoint["completed_phases"]
-        assert "phase-3-validate-prd" not in checkpoint["completed_phases"]
+        assert "phase-2-init" in checkpoint["completed_phases"]
+        assert "phase-3-draft-prd" in checkpoint["completed_phases"]
+        assert "phase-4-validate-prd" not in checkpoint["completed_phases"]
 
     def test_rollback_with_file_snapshot(self, tmp_path):
         """Test that file snapshots are created and restored."""
@@ -340,7 +340,7 @@ class TestRollbackMechanism:
 
         # Create rollback point
         rollback_point = mgr.create_rollback_point(
-            "phase-1-init",
+            "phase-2-init",
             "Before changes"
         )
 
