@@ -24,7 +24,7 @@ class TestCheckpointManager:
 
         checkpoint = mgr.init("test-project", "new-product", "test input")
 
-        assert checkpoint["version"] == "2.0"
+        assert checkpoint["version"] == "2.1"
         assert checkpoint["project_name"] == "test-project"
         assert checkpoint["intent"] == "new-product"
         assert checkpoint["user_input"] == "test input"
@@ -94,63 +94,63 @@ class TestCheckpointManager:
         mgr = CheckpointManager(tmp_path)
         mgr.init("test-project", "new-product", "test input")
 
-        mgr.record_phase_start("phase-1-init")
+        mgr.record_phase_start("phase-2-init")
 
         checkpoint = mgr.load()
-        assert checkpoint["current_phase"] == "phase-1-init"
+        assert checkpoint["current_phase"] == "phase-2-init"
         assert checkpoint["status"] == "in_progress"
-        assert "started_at" in checkpoint["phase_data"]["phase-1-init"]
+        assert "started_at" in checkpoint["phase_data"]["phase-2-init"]
 
     def test_record_phase_complete(self, tmp_path):
         """Test that record_phase_complete() updates cache correctly."""
         mgr = CheckpointManager(tmp_path)
         mgr.init("test-project", "new-product", "test input")
 
-        mgr.record_phase_start("phase-1-init")
-        mgr.record_phase_complete("phase-1-init", {"score": 95})
+        mgr.record_phase_start("phase-2-init")
+        mgr.record_phase_complete("phase-2-init", {"score": 95})
 
         checkpoint = mgr.load()
-        assert "phase-1-init" in checkpoint["completed_phases"]
-        assert checkpoint["phase_data"]["phase-1-init"]["score"] == 95
-        assert "completed_at" in checkpoint["phase_data"]["phase-1-init"]
+        assert "phase-2-init" in checkpoint["completed_phases"]
+        assert checkpoint["phase_data"]["phase-2-init"]["score"] == 95
+        assert "completed_at" in checkpoint["phase_data"]["phase-2-init"]
 
     def test_record_phase_failed_writes_immediately(self, tmp_path):
         """Test that record_phase_failed() writes to disk immediately."""
         mgr = CheckpointManager(tmp_path)
         mgr.init("test-project", "new-product", "test input")
 
-        mgr.record_phase_start("phase-1-init")
-        mgr.record_phase_failed("phase-1-init", "Test error")
+        mgr.record_phase_start("phase-2-init")
+        mgr.record_phase_failed("phase-2-init", "Test error")
 
         # Should be written to disk immediately
         disk_checkpoint = json.loads(mgr.checkpoint_file.read_text())
         assert disk_checkpoint["status"] == "failed"
-        assert disk_checkpoint["phase_data"]["phase-1-init"]["error"] == "Test error"
+        assert disk_checkpoint["phase_data"]["phase-2-init"]["error"] == "Test error"
 
     def test_record_phase_paused_writes_immediately(self, tmp_path):
         """Test that record_phase_paused() writes to disk immediately."""
         mgr = CheckpointManager(tmp_path)
         mgr.init("test-project", "new-product", "test input")
 
-        mgr.record_phase_start("phase-1-init")
-        mgr.record_phase_paused("phase-1-init", "Waiting for user")
+        mgr.record_phase_start("phase-2-init")
+        mgr.record_phase_paused("phase-2-init", "Waiting for user")
 
         # Should be written to disk immediately
         disk_checkpoint = json.loads(mgr.checkpoint_file.read_text())
         assert disk_checkpoint["status"] == "paused"
-        assert disk_checkpoint["phase_data"]["phase-1-init"]["pause_reason"] == "Waiting for user"
+        assert disk_checkpoint["phase_data"]["phase-2-init"]["pause_reason"] == "Waiting for user"
 
     def test_is_phase_completed(self, tmp_path):
         """Test that is_phase_completed() checks completed_phases list."""
         mgr = CheckpointManager(tmp_path)
         mgr.init("test-project", "new-product", "test input")
 
-        assert mgr.is_phase_completed("phase-1-init") is False
+        assert mgr.is_phase_completed("phase-2-init") is False
 
-        mgr.record_phase_start("phase-1-init")
-        mgr.record_phase_complete("phase-1-init")
+        mgr.record_phase_start("phase-2-init")
+        mgr.record_phase_complete("phase-2-init")
 
-        assert mgr.is_phase_completed("phase-1-init") is True
+        assert mgr.is_phase_completed("phase-2-init") is True
 
     def test_multiple_phase_updates_single_flush(self, tmp_path):
         """Test that multiple phase updates can be flushed in one write."""
@@ -158,10 +158,10 @@ class TestCheckpointManager:
         mgr.init("test-project", "new-product", "test input")
 
         # Multiple updates
-        mgr.record_phase_start("phase-1-init")
-        mgr.record_phase_complete("phase-1-init")
-        mgr.record_phase_start("phase-2-draft-prd")
-        mgr.record_phase_complete("phase-2-draft-prd")
+        mgr.record_phase_start("phase-2-init")
+        mgr.record_phase_complete("phase-2-init")
+        mgr.record_phase_start("phase-3-draft-prd")
+        mgr.record_phase_complete("phase-3-draft-prd")
 
         # All updates should be in cache
         checkpoint = mgr.load()
@@ -193,7 +193,7 @@ class TestCheckpointManager:
         checkpoint = mgr.load()
 
         assert checkpoint["status"] == "migrated"
-        assert "phase-2-init" in checkpoint["completed_phases"]  # v2.1: was phase-1-init
+        assert "phase-2-init" in checkpoint["completed_phases"]  # v2.1: was phase-2-init
         assert checkpoint["phase_data"]["phase-2-init"]["migrated_from"] == "project-initialized"
 
     def test_clear_notification(self, tmp_path):
