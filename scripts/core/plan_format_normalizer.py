@@ -25,7 +25,7 @@ iteration_planner.write_iteration_plans() 写出的标准格式。
 
   ## 任务列表
 
-  _（由 `./lifecycle task create` 动态生成）_
+  _（由 Product Lifecycle Orchestrator 迭代执行阶段维护）_
 """
 from __future__ import annotations
 
@@ -142,14 +142,14 @@ def normalize_plan(plan_path: str | Path, iteration_n: Optional[int] = None) -> 
     if not _RE_TASK_SECTION.search(content):
         content += (
             "\n## 任务列表\n\n"
-            "_（由 `./lifecycle task create` 动态生成）_\n"
+            "_（由 Product Lifecycle Orchestrator 迭代执行阶段维护）_\n"
         )
         fixed_fields.append("## 任务列表（插入标准占位符）")
 
     # ── 判断是否需要手动干预 ──────────────────────────────────────────────
     # 如果 **目标** 仍然是占位符内容，标记为需要手动填写
     goal_match = _RE_GOAL.search(content)
-    if goal_match and "待补充" in goal_match.group(1):
+    if goal_match and (not goal_match.group(1).strip() or "待补充" in goal_match.group(1).strip()):
         manual_required.append("**目标：**（需以「用户能够...」开头填写本迭代价值）")
 
     # 如果标题名称还是占位符
@@ -210,17 +210,12 @@ def _insert_after_goal(content: str, text: str) -> str:
     """在 **目标：** 行之后插入文本。"""
     m = _RE_GOAL.search(content)
     if m:
-        end = content.index("\n", m.start()) + 1
+        try:
+            end = content.index("\n", m.end()) + 1
+        except ValueError:
+            end = len(content)
         return content[:end] + text + content[end:]
     return content + "\n" + text
-
-
-def _insert_before_section(content: str, section_re: re.Pattern, text: str) -> str:
-    """在某个 ## 章节之前插入文本。"""
-    m = section_re.search(content)
-    if m:
-        return content[:m.start()] + text + content[m.start():]
-    return content + text
 
 
 # ---------------------------------------------------------------------------

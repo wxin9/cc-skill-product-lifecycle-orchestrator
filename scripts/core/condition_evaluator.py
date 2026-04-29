@@ -1,5 +1,5 @@
 """
-Condition Evaluator for Product-Lifecycle Orchestrator.
+Condition Evaluator for Product Lifecycle Orchestrator.
 
 Safely evaluates condition expressions for conditional branching.
 """
@@ -108,6 +108,9 @@ class ConditionEvaluator:
             r'locals\s*\(',  # locals function
             r'vars\s*\(',  # vars function
             r'dir\s*\(',  # dir function
+            r'os\.',  # os module
+            r'subprocess\.',  # subprocess module
+            r'sys\.',  # sys module
         ]
 
         for pattern in forbidden_patterns:

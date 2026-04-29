@@ -22,7 +22,7 @@ risk_register.json 格式：
 """
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -42,11 +42,11 @@ class RiskRegister:
 
     def _load(self) -> dict:
         if self.register_file.exists():
-            return json.loads(self.register_file.read_text())
+            return json.loads(self.register_file.read_text(encoding="utf-8"))
         return {"risks": []}
 
     def _save(self, data: dict):
-        self.register_file.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+        self.register_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _next_id(self, risks: list) -> str:
         nums = [int(r["id"].split("-")[1]) for r in risks if re.match(r'RISK-\d+', r["id"])]
@@ -70,6 +70,9 @@ class RiskRegister:
         # 从风险章节提取每行作为风险条目
         added = 0
         for line in risks_text.splitlines():
+            # Skip Markdown table rows
+            if line.startswith("|"):
+                continue
             line = line.strip().lstrip("-*•").strip()
             if len(line) < 5 or line in existing_titles:
                 continue
@@ -83,25 +86,13 @@ class RiskRegister:
                 "mitigation": "（待填写）",
                 "owner": "",
                 "source": "PRD",
-                "created_at": datetime.now().isoformat(),
-                "updated_at": datetime.now().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
             })
             added += 1
 
         if not data["risks"]:
-            # PRD 没有风险章节时，添加占位风险
-            data["risks"].append({
-                "id": "RISK-001",
-                "title": "（请手动填写主要风险）",
-                "probability": "medium",
-                "impact": "medium",
-                "status": "open",
-                "mitigation": "（待填写）",
-                "owner": "",
-                "source": "manual",
-                "created_at": datetime.now().isoformat(),
-                "updated_at": datetime.now().isoformat(),
-            })
+            print(f"[risk] PRD 中未发现风险条目，风险列表为空")
 
         self._save(data)
         print(f"[risk] 初始化完成，共 {len(data['risks'])} 条风险（来自 PRD: {added} 条）")
@@ -116,8 +107,8 @@ class RiskRegister:
             "probability": probability, "impact": impact,
             "status": "open", "mitigation": mitigation,
             "owner": "", "source": source,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         })
         self._save(data)
         print(f"[risk] 新增: {risk_id} — {title}")
@@ -131,7 +122,7 @@ class RiskRegister:
             raise ValueError(f"风险不存在: {risk_id}")
         for k, v in kwargs.items():
             entry[k] = v
-        entry["updated_at"] = datetime.now().isoformat()
+        entry["updated_at"] = datetime.now(timezone.utc).isoformat()
         self._save(data)
         print(f"[risk] 已更新 {risk_id}")
 

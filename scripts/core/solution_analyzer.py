@@ -1,7 +1,7 @@
 """
 solution_analyzer.py — 实现方案分析器
 
-分析用户需求、项目代码和业界方案，为 product-lifecycle 工作流提供实现建议。
+分析用户需求、项目代码和业界方案，为 product-lifecycle-orchestrator 工作流提供实现建议。
 
 核心类：
   SolutionAnalyzer — 分析需求并生成实现方案建议
@@ -170,6 +170,8 @@ class SolutionAnalyzer:
             "performance": "performance optimization",
             "security": "security hardening best practices",
             "testing": "testing strategies",
+            "new-product": "new product development from scratch MVP",
+            "from-scratch": "building software from scratch architecture design",
         }
 
         # 获取项目类型
@@ -290,6 +292,34 @@ class SolutionAnalyzer:
                     "pros": ["彻底改造"],
                     "cons": ["风险高", "影响大"],
                     "complexity": "high",
+                    "source": "standard",
+                },
+            ],
+            "new-product": [
+                {
+                    "name": "MVP 起步",
+                    "description": "先交付最小可行产品，快速验证核心价值，再逐步扩展功能",
+                    "pros": ["快速验证市场", "降低试错成本", "早期用户反馈"],
+                    "cons": ["功能不完整", "需要后续多轮迭代"],
+                    "complexity": "medium",
+                    "source": "lean-startup",
+                },
+                {
+                    "name": "完整产品规划",
+                    "description": "完整规划所有功能模块，按优先级分阶段交付",
+                    "pros": ["系统完整", "架构合理", "用户体验一致"],
+                    "cons": ["周期较长", "前期投入大"],
+                    "complexity": "high",
+                    "source": "waterfall-agile-hybrid",
+                },
+            ],
+            "from-scratch": [
+                {
+                    "name": "技术选型优先",
+                    "description": "先确定技术栈和架构，再开始功能开发",
+                    "pros": ["技术债务少", "架构可扩展"],
+                    "cons": ["前期投入较大"],
+                    "complexity": "medium",
                     "source": "standard",
                 },
             ],
@@ -422,6 +452,34 @@ class SolutionAnalyzer:
                 "estimated_effort": "5-7天",
                 "risk_level": "low",
             },
+            "new-product": {
+                "title": "方案A: MVP 优先",
+                "description": "从最小可行产品出发，验证核心假设后再扩展",
+                "steps": [
+                    "1. 定义核心用户价值和最小功能集",
+                    "2. 完成 PRD 和架构设计",
+                    "3. 搭建基础框架和 CI/CD",
+                    "4. 实现 MVP 功能",
+                    "5. 内测和用户反馈收集",
+                    "6. 迭代优化",
+                ],
+                "estimated_effort": "4-8周",
+                "risk_level": "low",
+            },
+            "from-scratch": {
+                "title": "方案A: 渐进式构建",
+                "description": "从基础设施开始，逐步添加功能层",
+                "steps": [
+                    "1. 选定技术栈和架构模式",
+                    "2. 搭建基础工程结构",
+                    "3. 实现核心模块",
+                    "4. 分层添加功能",
+                    "5. 完善测试覆盖",
+                    "6. 文档和运维准备",
+                ],
+                "estimated_effort": "3-6周",
+                "risk_level": "low",
+            },
         }
 
         template = intent_templates.get(
@@ -508,6 +566,34 @@ class SolutionAnalyzer:
                 "estimated_effort": "7-10天",
                 "risk_level": "medium",
             },
+            "new-product": {
+                "title": "方案B: 敏捷全栈开发",
+                "description": "按迭代交付完整功能闭环，每个迭代包含开发、测试、用户验证",
+                "steps": [
+                    "1. 完整需求分析和优先级排序",
+                    "2. 设计支持扩展的系统架构",
+                    "3. 按迭代计划分批开发",
+                    "4. 每迭代包含自动化测试",
+                    "5. 持续集成和部署",
+                    "6. 用户反馈驱动迭代调整",
+                ],
+                "estimated_effort": "8-16周",
+                "risk_level": "medium",
+            },
+            "from-scratch": {
+                "title": "方案B: 领域驱动设计",
+                "description": "以业务领域为核心设计系统边界和模块划分",
+                "steps": [
+                    "1. 领域分析和边界划分",
+                    "2. 定义核心领域模型",
+                    "3. 设计领域服务和接口",
+                    "4. 实现基础设施层",
+                    "5. 集成和端到端测试",
+                    "6. 性能调优",
+                ],
+                "estimated_effort": "6-10周",
+                "risk_level": "medium",
+            },
         }
 
         template = intent_templates.get(
@@ -592,6 +678,34 @@ class SolutionAnalyzer:
                     "6. 切换和监控",
                 ],
                 "estimated_effort": "15-20天",
+                "risk_level": "high",
+            },
+            "new-product": {
+                "title": "方案C: 平台化思维",
+                "description": "从第一天起按平台化设计，支持未来扩展和生态建设",
+                "steps": [
+                    "1. 定义平台核心能力和扩展点",
+                    "2. 设计插件化架构",
+                    "3. 实现平台基础和 SDK",
+                    "4. 开发第一个标准应用",
+                    "5. 开放 API 和开发者文档",
+                    "6. 建立开发者生态",
+                ],
+                "estimated_effort": "12-24周",
+                "risk_level": "high",
+            },
+            "from-scratch": {
+                "title": "方案C: 云原生优先",
+                "description": "从零开始按云原生规范设计，充分利用云平台能力",
+                "steps": [
+                    "1. 选定云平台和托管服务",
+                    "2. 设计微服务边界",
+                    "3. 实现服务网格和可观测性",
+                    "4. 容器化和 K8s 部署",
+                    "5. 自动扩缩容配置",
+                    "6. 灾备和多区域部署",
+                ],
+                "estimated_effort": "8-16周",
                 "risk_level": "high",
             },
         }
@@ -724,7 +838,9 @@ class SolutionAnalyzer:
         # TODO: 实现推荐逻辑
         # 当前简单返回评分最高的方案
         best = max(solutions, key=lambda x: x.get("score", 0))
-        return (best.get("id", "unknown"), 0.5)
+        score = best.get("score", 50)
+        confidence = round(min(0.95, max(0.1, score / 100.0)), 2)
+        return (best.get("id", "unknown"), confidence)
 
     def _detect_project_type(self) -> str:
         """检测项目类型
@@ -779,8 +895,14 @@ class SolutionAnalyzer:
 
         counts = {lang: 0 for lang in extensions.values()}
 
+        SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', '.env', 'dist', 'build', '.pytest_cache'}
+
+        def _should_skip(path: Path) -> bool:
+            return any(part in SKIP_DIRS for part in path.parts)
+
         try:
-            for file_path in self.root.rglob("*"):
+            all_files = [f for f in self.root.rglob("*") if not _should_skip(f)]
+            for file_path in all_files:
                 if file_path.is_file():
                     ext = file_path.suffix
                     if ext in extensions:
@@ -976,9 +1098,15 @@ class SolutionAnalyzer:
             "Service Layer": ["service", "business"],
         }
 
+        SKIP_DIRS = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', '.env', 'dist', 'build', '.pytest_cache'}
+
+        def _should_skip(path: Path) -> bool:
+            return any(part in SKIP_DIRS for part in path.parts)
+
         try:
             # 扫描代码文件查找模式
-            for py_file in self.root.rglob("*.py"):
+            all_py_files = [f for f in self.root.rglob("*.py") if not _should_skip(f)]
+            for py_file in all_py_files:
                 try:
                     content = py_file.read_text(encoding="utf-8", errors="ignore").lower()
                     for pattern, keywords in pattern_keywords.items():

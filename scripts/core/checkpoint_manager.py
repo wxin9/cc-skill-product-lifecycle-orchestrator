@@ -1,9 +1,10 @@
 """
-Checkpoint Manager for Product-Lifecycle Orchestrator.
+Checkpoint Manager for Product Lifecycle Orchestrator.
 
 Manages phase-level workflow state with automatic migration from legacy steps format.
 """
 from __future__ import annotations
+import copy
 import json
 import shutil
 import threading
@@ -12,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, List
 
+CURRENT_VERSION = "2.3"
+
 
 class CheckpointManager:
     """
@@ -19,15 +22,15 @@ class CheckpointManager:
 
     Checkpoint file format (.lifecycle/checkpoint.json):
     {
-      "version": "2.0",
+      "version": "2.3",
       "project_name": "xxx",
       "created_at": "2026-04-16T...",
       "updated_at": "2026-04-16T...",
-      "current_phase": "phase-3-validate-prd",
+      "current_phase": "phase-4-product-spec",
       "status": "in_progress" | "paused" | "completed" | "failed",
-      "completed_phases": ["phase-0-intent", "phase-1-init", ...],
+      "completed_phases": ["phase-0-intent", "phase-2-init", ...],
       "phase_data": {
-        "phase-3-validate-prd": {
+        "phase-4-product-spec": {
           "started_at": "...",
           "completed_at": "...",
           "score": 85,
@@ -66,7 +69,7 @@ class CheckpointManager:
         with self._lock:  # v2.2: Thread-safe
             # v2.1: Return cached checkpoint if available
             if self._cache is not None:
-                return self._cache
+                return copy.deepcopy(self._cache)
 
             # Load from disk
             if self.checkpoint_file.exists():
@@ -74,21 +77,21 @@ class CheckpointManager:
                     self._cache = json.loads(self.checkpoint_file.read_text(encoding="utf-8"))
                     # v2.1: Migrate checkpoint version if needed
                     self._cache = self._migrate_checkpoint_version(self._cache)
-                    return self._cache
+                    return copy.deepcopy(self._cache)
                 except (json.JSONDecodeError, OSError) as e:
                     # Corrupted checkpoint, try migration
                     print(f"⚠ Checkpoint corrupted, attempting migration: {e}")
                     self._cache = self._migrate_from_legacy()
-                    return self._cache
+                    return copy.deepcopy(self._cache)
 
             # No checkpoint exists, try migration
             if self.legacy_steps_dir.exists():
                 self._cache = self._migrate_from_legacy()
-                return self._cache
+                return copy.deepcopy(self._cache)
 
             # Return empty checkpoint
             self._cache = self._create_empty()
-            return self._cache
+            return copy.deepcopy(self._cache)
 
     def save(self, checkpoint: dict, immediate: bool = False):
         """
@@ -112,7 +115,7 @@ class CheckpointManager:
         """Initialize a new checkpoint."""
         with self._lock:  # v2.2: Thread-safe
             checkpoint = {
-                "version": "2.1",
+                "version": CURRENT_VERSION,
                 "project_name": project_name,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -144,8 +147,9 @@ class CheckpointManager:
         """Destructor callback to flush cache on exit (v2.1)."""
         try:
             self.flush()
-        except Exception:
-            pass  # Silently fail on exit
+        except Exception as e:
+            import sys
+            print(f"[WARN] Failed to flush checkpoint on exit: {e}", file=sys.stderr)
 
     def is_phase_completed(self, phase_id: str) -> bool:
         """Check if a phase has been completed (uses cache)."""
@@ -164,7 +168,7 @@ class CheckpointManager:
             checkpoint["phase_data"][phase_id]["started_at"] = datetime.now(timezone.utc).isoformat()
             checkpoint["current_phase"] = phase_id
             checkpoint["status"] = "in_progress"
-            self.save(checkpoint)  # Deferred write
+            self.save(checkpoint, immediate=True)  # Write immediately - phase start is important state
 
     def record_phase_complete(self, phase_id: str, data: Optional[dict] = None):
         """Record that a phase has completed (updates cache only)."""
@@ -181,7 +185,7 @@ class CheckpointManager:
             checkpoint["phase_data"][phase_id]["completed_at"] = datetime.now(timezone.utc).isoformat()
             if data:
                 checkpoint["phase_data"][phase_id].update(data)
-            self.save(checkpoint)  # Deferred write
+            self.save(checkpoint, immediate=True)  # Write immediately - phase completion must survive crashes
 
     def record_phase_failed(self, phase_id: str, error: str):
         """Record that a phase has failed (updates cache only)."""
@@ -246,9 +250,9 @@ class CheckpointManager:
                 "description": description or f"Before {phase_id}",
                 "checkpoint_snapshot": {
                     "current_phase": checkpoint.get("current_phase"),
-                    "completed_phases": checkpoint.get("completed_phases", []).copy(),
+                    "completed_phases": copy.deepcopy(checkpoint.get("completed_phases", [])),
                     "status": checkpoint.get("status"),
-                    "phase_data": checkpoint.get("phase_data", {}).copy()
+                    "phase_data": copy.deepcopy(checkpoint.get("phase_data", {}))
                 },
                 "snapshot_dir": str(snapshot_dir) if snapshot_dir else None
             }
@@ -363,13 +367,23 @@ class CheckpointManager:
             print(f"⚠ Snapshot directory {snapshot_dir} not found")
             return
 
-        # Restore Docs/ directory
+        # Restore Docs/ directory (atomic: copy to temp first, then swap)
         snapshot_docs = snapshot_path / "Docs"
         if snapshot_docs.exists():
             docs_dir = self.root / "Docs"
-            if docs_dir.exists():
-                shutil.rmtree(docs_dir)
-            shutil.copytree(snapshot_docs, docs_dir)
+            temp_dir = self.root / "Docs.__rollback_tmp__"
+            try:
+                shutil.copytree(snapshot_docs, temp_dir)
+                if docs_dir.exists():
+                    shutil.rmtree(docs_dir)
+                temp_dir.rename(docs_dir)
+            except Exception:
+                # Restore from temp if swap failed
+                if temp_dir.exists():
+                    if docs_dir.exists():
+                        shutil.rmtree(docs_dir)
+                    temp_dir.rename(docs_dir)
+                raise
 
         # Restore .lifecycle/ directory
         snapshot_lifecycle = snapshot_path / ".lifecycle"
@@ -395,11 +409,12 @@ class CheckpointManager:
         """
         Migrate checkpoint from old version to new version.
 
-        v2.0 → v2.1: Migrate from 10-phase to 11-phase system (with phase-1-analyze-solution)
+        v2.0/v2.1/v2.2 → v2.3: Migrate legacy phase IDs to the explicit
+        Product/UED/Tech/Test Spec + Lifecycle Graph flow.
         """
         version = checkpoint.get("version", "2.0")
 
-        if version == "2.0":
+        if version != CURRENT_VERSION and version in {"2.0", "2.1", "2.2"}:
             # Backup original checkpoint
             backup_file = self.checkpoint_file.with_suffix(".json.bak")
             if not backup_file.exists():  # Don't overwrite existing backup
@@ -412,18 +427,26 @@ class CheckpointManager:
                 except OSError as e:
                     print(f"⚠ Failed to backup checkpoint: {e}")
 
-            # Migrate Phase IDs from v2.0 (10 phases) to v2.1 (11 phases)
+            # Migrate phase IDs from v2.0-v2.2 to the v2.3 explicit spec flow.
             phase_id_map = {
                 "phase-1-init": "phase-2-init",
                 "phase-2-draft-prd": "phase-3-draft-prd",
-                "phase-3-validate-prd": "phase-4-validate-prd",
-                "phase-4-arch-interview": "phase-5-arch-interview",
-                "phase-5-draft-arch": "phase-6-draft-arch",
-                "phase-6-validate-arch": "phase-7-validate-arch",
-                "phase-7-test-outline": "phase-8-test-outline",
-                "phase-8-iterations": "phase-9-iterations",
-                "phase-9-iter-exec": "phase-10-iter-exec",
-                "phase-10-change": "phase-11-change"
+                "phase-3-validate-prd": "phase-4-product-spec",
+                "phase-4-arch-interview": "phase-7-draft-arch",
+                "phase-5-draft-arch": "phase-7-draft-arch",
+                "phase-6-validate-arch": "phase-8-tech-spec",
+                "phase-7-test-outline": "phase-10-test-spec",
+                "phase-8-iterations": "phase-11-iterations",
+                "phase-9-iter-exec": "phase-12-iter-exec",
+                "phase-10-change": "phase-1-impact-report",
+                "phase-4-validate-prd": "phase-4-product-spec",
+                "phase-5-arch-interview": "phase-7-draft-arch",
+                "phase-6-draft-arch": "phase-7-draft-arch",
+                "phase-7-validate-arch": "phase-8-tech-spec",
+                "phase-8-test-outline": "phase-10-test-spec",
+                "phase-9-iterations": "phase-11-iterations",
+                "phase-10-iter-exec": "phase-12-iter-exec",
+                "phase-11-change": "phase-1-impact-report",
             }
 
             # Map completed phases
@@ -431,7 +454,8 @@ class CheckpointManager:
             new_completed = []
             for phase_id in old_completed:
                 new_phase_id = phase_id_map.get(phase_id, phase_id)
-                new_completed.append(new_phase_id)
+                if new_phase_id not in new_completed:
+                    new_completed.append(new_phase_id)
             checkpoint["completed_phases"] = new_completed
 
             # Map current phase
@@ -444,13 +468,15 @@ class CheckpointManager:
             new_phase_data = {}
             for phase_id, data in old_phase_data.items():
                 new_phase_id = phase_id_map.get(phase_id, phase_id)
-                new_phase_data[new_phase_id] = data
+                if new_phase_id not in new_phase_data:
+                    new_phase_data[new_phase_id] = {}
+                new_phase_data[new_phase_id].update(data)
             checkpoint["phase_data"] = new_phase_data
 
             # Update version
-            checkpoint["version"] = "2.1"
+            checkpoint["version"] = CURRENT_VERSION
 
-            print(f"✓ Migrated checkpoint from v2.0 to v2.1 ({len(new_completed)} phases)")
+            print(f"✓ Migrated checkpoint from v{version} to {CURRENT_VERSION} ({len(new_completed)} phases)")
             self._dirty = True
 
         # Validate migrated phase IDs against PHASES registry
@@ -477,7 +503,7 @@ class CheckpointManager:
     def _create_empty(self) -> dict:
         """Create an empty checkpoint."""
         return {
-            "version": "2.1",  # Updated to v2.1
+            "version": CURRENT_VERSION,
             "project_name": "",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -529,19 +555,19 @@ class CheckpointManager:
         return checkpoint
 
     def _map_step_to_phase(self, step_id: str) -> Optional[str]:
-        """Map legacy step_id to new phase_id (v2.1 with 11 phases)."""
+        """Map legacy step_id to current v2.3 phase_id."""
         mapping = {
-            "project-initialized": "phase-2-init",  # Updated for v2.1
+            "project-initialized": "phase-2-init",
             "project-bootstrapped": "phase-2-init",
             "prd-written": "phase-3-draft-prd",
             "prd-drafted": "phase-3-draft-prd",
-            "prd-validated": "phase-4-validate-prd",
-            "arch-interview-done": "phase-5-arch-interview",
-            "arch-designed": "phase-6-draft-arch",
-            "arch-doc-written": "phase-6-draft-arch",
-            "arch-validated": "phase-7-validate-arch",
-            "test-outline-ready": "phase-8-test-outline",
-            "test-outline-written": "phase-8-test-outline",
-            "iterations-planned": "phase-9-iterations"
+            "prd-validated": "phase-4-product-spec",
+            "arch-interview-done": "phase-7-draft-arch",
+            "arch-designed": "phase-7-draft-arch",
+            "arch-doc-written": "phase-7-draft-arch",
+            "arch-validated": "phase-8-tech-spec",
+            "test-outline-ready": "phase-10-test-spec",
+            "test-outline-written": "phase-10-test-spec",
+            "iterations-planned": "phase-11-iterations"
         }
         return mapping.get(step_id)

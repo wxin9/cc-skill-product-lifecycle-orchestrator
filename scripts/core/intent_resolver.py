@@ -1,5 +1,5 @@
 """
-Intent Resolver for Product-Lifecycle Orchestrator.
+Intent Resolver for Product Lifecycle Orchestrator.
 
 Maps user input to execution intents using regex patterns and priority ranking.
 """
@@ -19,7 +19,9 @@ IntentType = Literal[
     "arch-change",
     "new-iteration",
     "continue-iter",
-    "new-product"
+    "new-product",
+    "from-scratch",
+    "test-change"
 ]
 
 
@@ -83,7 +85,15 @@ class IntentResolver:
             r"新产品", r"从零开始", r"新项目",
             r"从零做", r"new product", r"做一个产品",
             r"开发一个"
-        ]
+        ],
+        "from-scratch": [
+            r"从零", r"from scratch", r"全新项目", r"空白项目",
+            r"重头开始", r"重新开始"
+        ],
+        "test-change": [
+            r"测试改", r"修改测试", r"test change", r"测试用例变",
+            r"更新测试", r"调整测试"
+        ],
     }
 
     # Intent priority (lower number = higher priority)
@@ -97,7 +107,9 @@ class IntentResolver:
         "arch-change": 6,
         "new-iteration": 7,
         "continue-iter": 8,
-        "new-product": 9
+        "new-product": 9,
+        "from-scratch": 9,   # Same priority as new-product
+        "test-change": 5,    # Same priority as new-feature
     }
 
     @classmethod
@@ -124,7 +136,6 @@ class IntentResolver:
                         priority=cls.INTENT_PRIORITY.get(intent, 99),
                         explanation=f"'{user_input}' 匹配意图 '{intent}' (关键词: {pattern})"
                     ))
-                    break  # Only match first pattern per intent
 
         if not matches:
             return (["new-product"], "未识别到明确意图，默认为新项目")
@@ -148,7 +159,7 @@ class IntentResolver:
         Returns:
             List of phase sequences, one per intent
         """
-        from scripts.core.phases import get_phases_by_intent, get_ordered_phases
+        from .phases import get_phases_by_intent, get_ordered_phases
 
         paths = []
         for intent in intents:

@@ -1,5 +1,5 @@
 """
-PHASES Definition Table for Product-Lifecycle Orchestrator.
+PHASES Definition Table for Product Lifecycle Orchestrator.
 
 This module defines all phases in the product lifecycle workflow,
 including their dependencies, artifacts, validation rules, and failure strategies.
@@ -31,6 +31,7 @@ class PhaseDefinition(TypedDict):
     auto: bool
     command: Optional[str]
     command_args: Optional[dict]
+    execution_mode: Optional[str]
 
     # Dependencies
     depends_on: List[str]
@@ -56,287 +57,291 @@ class PhaseDefinition(TypedDict):
     branches: Optional[dict]  # Branch mapping (e.g., {"web": "phase-7a", "cli": "phase-7b"})
 
 
+def _artifact(path: str, min_bytes: int) -> PhaseArtifact:
+    return {
+        "path": path,
+        "min_bytes": min_bytes,
+        "required_headings": None,
+        "required_substrings": None,
+    }
+
+
+def _phase(
+    *,
+    id: str,
+    name: str,
+    description: str,
+    order: int,
+    auto: bool,
+    command: Optional[str],
+    command_args: Optional[dict],
+    depends_on: List[str],
+    artifacts: List[PhaseArtifact],
+    intent_triggers: List[str],
+    blocks: Optional[List[str]] = None,
+    validation_type: Optional[str] = None,
+    pause_for: Optional[str] = None,
+    execution_mode: Optional[str] = None,
+    on_failure: Literal["pause", "retry", "skip"] = "pause",
+    max_retries: int = 0,
+    timeout_hint: Optional[str] = None,
+) -> PhaseDefinition:
+    return {
+        "id": id,
+        "name": name,
+        "description": description,
+        "order": order,
+        "auto": auto,
+        "command": command,
+        "command_args": command_args,
+        "execution_mode": execution_mode,
+        "depends_on": depends_on,
+        "blocks": blocks or [],
+        "artifacts": artifacts,
+        "validation_type": validation_type,
+        "on_failure": on_failure,
+        "max_retries": max_retries,
+        "pause_for": pause_for,
+        "timeout_hint": timeout_hint,
+        "intent_triggers": intent_triggers,
+        "condition": None,
+        "branches": None,
+    }
+
+
 # ---------------------------------------------------------------------------
 # PHASES Registry
 # ---------------------------------------------------------------------------
 
 PHASES: List[PhaseDefinition] = [
-    {
-        "id": "phase-0-intent",
-        "name": "意图识别",
-        "description": "识别用户意图，确定执行路径",
-        "order": 0,
-        "auto": False,
-        "command": None,
-        "command_args": None,
-        "depends_on": [],
-        "blocks": ["phase-2-init", "phase-11-change"],
-        "artifacts": [],
-        "validation_type": None,
-        "on_failure": "pause",
-        "max_retries": 0,
-        "pause_for": "等待用户确认执行计划",
-        "timeout_hint": None,
-        "intent_triggers": ["*"],
-        "condition": None,
-        "branches": None
-    },
-    {
-        "id": "phase-1-analyze-solution",
-        "name": "实现方案分析",
-        "description": "分析需求、项目代码、业界方案，生成多个实现方案供用户选择",
-        "order": 1,
-        "auto": False,
-        "command": "analyze_solution",
-        "command_args": {"intent": "{intent}", "user_input": "{user_input}"},
-        "depends_on": ["phase-0-intent"],
-        "blocks": ["phase-2-init"],
-        "artifacts": [
-            {"path": ".lifecycle/solution.json", "min_bytes": 100, "required_headings": None, "required_substrings": None}
+    _phase(
+        id="phase-0-intent",
+        name="意图识别",
+        description="识别用户意图，确定执行路径",
+        order=0,
+        auto=True,
+        command=None,
+        command_args=None,
+        depends_on=[],
+        blocks=["phase-2-init", "phase-1-impact-report"],
+        artifacts=[],
+        intent_triggers=["*"],
+    ),
+    _phase(
+        id="phase-1-analyze-solution",
+        name="Solution Advisor",
+        description="分析需求、项目代码、业界方案，生成方案建议和轻量模式建议",
+        order=1,
+        auto=False,
+        command="analyze_solution",
+        command_args={"intent": "{intent}", "user_input": "{user_description}"},
+        depends_on=["phase-0-intent"],
+        blocks=["phase-2-init"],
+        artifacts=[_artifact(".lifecycle/solution.json", 100)],
+        intent_triggers=["new-product", "from-scratch"],
+        pause_for="等待用户选择实现方案",
+        timeout_hint="建议在 1h 内完成方案选择",
+    ),
+    _phase(
+        id="phase-1-impact-report",
+        name="影响分析报告",
+        description="在需求或代码变更前生成全量高亮 Impact Report",
+        order=1,
+        auto=True,
+        command="change",
+        command_args={"change_type": "{change_type}", "user_input": "{user_description}"},
+        depends_on=["phase-0-intent"],
+        artifacts=[
+            _artifact(".lifecycle/CHANGE_IMPACT.md", 100),
+            _artifact(".lifecycle/specs/impact.json", 100),
         ],
-        "validation_type": None,
-        "on_failure": "pause",
-        "max_retries": 0,
-        "pause_for": "等待用户选择实现方案",
-        "timeout_hint": "建议在 1h 内完成方案选择",
-        "intent_triggers": ["*"],
-        "condition": None,
-        "branches": None
-    },
-    {
-        "id": "phase-2-init",
-        "name": "项目初始化",
-        "description": "创建文档结构、DoD 配置、Risk Register、ADR 目录",
-        "order": 2,
-        "auto": True,
-        "command": "init",
-        "command_args": {"name": "{project_name}"},
-        "depends_on": [],
-        "blocks": ["phase-3-draft-prd"],
-        "artifacts": [
-            {"path": "Docs/INDEX.md", "min_bytes": 200, "required_headings": None, "required_substrings": None},
-            {"path": ".lifecycle/config.json", "min_bytes": 100, "required_headings": None, "required_substrings": None},
-            {"path": ".lifecycle/dod.json", "min_bytes": 50, "required_headings": None, "required_substrings": None},
-            {"path": "Docs/adr/INDEX.md", "min_bytes": 80, "required_headings": None, "required_substrings": None}
+        intent_triggers=["new-feature", "prd-change", "arch-change", "code-change", "test-failure", "bug-fix", "gap"],
+    ),
+    _phase(
+        id="phase-2-init",
+        name="项目初始化",
+        description="创建 Human Docs、runtime state、spec schema 和基础目录",
+        order=2,
+        auto=True,
+        command="init",
+        command_args={"name": "{project_name}"},
+        depends_on=["phase-0-intent"],
+        blocks=["phase-3-draft-prd"],
+        artifacts=[
+            _artifact("Docs/INDEX.md", 200),
+            _artifact(".lifecycle/config.json", 100),
+            _artifact(".lifecycle/dod.json", 50),
+            _artifact("Docs/adr/INDEX.md", 80),
+            _artifact(".lifecycle/specs/schemas/product.schema.json", 100),
         ],
-        "validation_type": None,
-        "on_failure": "pause",
-        "max_retries": 1,
-        "pause_for": None,
-        "timeout_hint": None,
-        "intent_triggers": ["new-product", "from-scratch"],
-        "condition": None,
-        "branches": None
-    },
-    {
-        "id": "phase-3-draft-prd",
-        "name": "AI 协作 PRD 起草",
-        "description": "Claude 生成 PRD 草案，用户做审稿人",
-        "order": 3,
-        "auto": False,
-        "command": "draft",
-        "command_args": {"doc_type": "prd", "description": "{user_description}"},
-        "depends_on": ["phase-2-init"],
-        "blocks": ["phase-4-validate-prd"],
-        "artifacts": [
-            {"path": "Docs/product/PRD.md", "min_bytes": 800, "required_headings": None, "required_substrings": None}
+        intent_triggers=["new-product", "from-scratch"],
+        max_retries=1,
+    ),
+    _phase(
+        id="phase-3-draft-prd",
+        name="AI 协作 PRD 起草",
+        description="生成 Human PRD，用户审核需求语义和范围边界",
+        order=3,
+        auto=False,
+        command="draft",
+        command_args={"doc_type": "prd", "description": "{user_description}"},
+        depends_on=["phase-2-init"],
+        blocks=["phase-4-product-spec"],
+        artifacts=[_artifact("Docs/product/PRD.md", 800)],
+        intent_triggers=["new-product", "new-feature", "prd-change"],
+        pause_for="等待用户审核 PRD 草案，补充 [❓待确认] 标注处",
+        timeout_hint="建议在 24h 内完成审核",
+    ),
+    _phase(
+        id="phase-4-product-spec",
+        name="Product Spec 生成与验证",
+        description="验证 PRD，通过后生成 Product Spec 和 PRD 快照",
+        order=4,
+        auto=True,
+        command="validate",
+        command_args={"doc": "Docs/product/PRD.md", "type": "prd"},
+        depends_on=["phase-3-draft-prd"],
+        blocks=["phase-5-draft-ued"],
+        artifacts=[
+            _artifact(".lifecycle/snapshots/prd_latest.md", 800),
+            _artifact(".lifecycle/steps/prd-score.json", 30),
+            _artifact(".lifecycle/specs/product.spec.json", 200),
         ],
-        "validation_type": None,
-        "on_failure": "pause",
-        "max_retries": 0,
-        "pause_for": "等待用户审核 PRD 草案，补充 [❓待确认] 标注处",
-        "timeout_hint": "建议在 24h 内完成审核",
-        "intent_triggers": ["new-product", "new-feature", "prd-change"],
-        "condition": None,
-        "branches": None
-    },
-    {
-        "id": "phase-4-validate-prd",
-        "name": "PRD 验证 + 自动快照",
-        "description": "验证 PRD 质量，通过后自动建快照",
-        "order": 4,
-        "auto": True,
-        "command": "validate",
-        "command_args": {"doc": "Docs/product/PRD.md", "type": "prd"},
-        "depends_on": ["phase-3-draft-prd"],
-        "blocks": ["phase-5-arch-interview"],
-        "artifacts": [
-            {"path": ".lifecycle/snapshots/prd_latest.md", "min_bytes": 800, "required_headings": None, "required_substrings": None},
-            {"path": ".lifecycle/steps/prd-score.json", "min_bytes": 30, "required_headings": None, "required_substrings": None}
+        validation_type="prd",
+        intent_triggers=["new-product", "new-feature", "prd-change"],
+        max_retries=3,
+    ),
+    _phase(
+        id="phase-5-draft-ued",
+        name="AI 协作 UED 设计",
+        description="从 Product Spec 推导 Human UED，用户审核页面、流程、状态和反馈",
+        order=5,
+        auto=False,
+        command="draft",
+        command_args={"doc_type": "ued", "doc": "Docs/product/UED.md"},
+        depends_on=["phase-4-product-spec"],
+        blocks=["phase-6-ued-spec"],
+        artifacts=[_artifact("Docs/product/UED.md", 400)],
+        intent_triggers=["new-product", "new-feature", "prd-change"],
+        pause_for="等待用户审核 UED 草案，确认核心界面、流程、状态和错误反馈",
+    ),
+    _phase(
+        id="phase-6-ued-spec",
+        name="UED Spec 生成与验证",
+        description="从 Product Spec 和 Human UED 生成 UED Spec",
+        order=6,
+        auto=True,
+        command="specs",
+        command_args={"action": "generate", "target": "ued"},
+        depends_on=["phase-5-draft-ued"],
+        blocks=["phase-7-draft-arch"],
+        artifacts=[_artifact(".lifecycle/specs/ued.spec.json", 200)],
+        intent_triggers=["new-product", "new-feature", "prd-change"],
+        max_retries=1,
+    ),
+    _phase(
+        id="phase-7-draft-arch",
+        name="AI 协作技术架构设计",
+        description="从 Product/UED Specs 推导 Human Architecture Doc 和关键 ADR",
+        order=7,
+        auto=False,
+        command="draft",
+        command_args={"doc_type": "arch", "doc": "Docs/tech/ARCH.md"},
+        depends_on=["phase-6-ued-spec"],
+        blocks=["phase-8-tech-spec"],
+        artifacts=[_artifact("Docs/tech/ARCH.md", 800)],
+        intent_triggers=["new-product", "new-feature", "prd-change", "arch-change"],
+        pause_for="等待用户审核技术架构草案，对 ADR 做决策",
+    ),
+    _phase(
+        id="phase-8-tech-spec",
+        name="Tech Spec 生成与验证",
+        description="验证架构文档，通过后生成 Tech Spec 和架构快照",
+        order=8,
+        auto=True,
+        command="validate",
+        command_args={"doc": "Docs/tech/ARCH.md", "type": "arch"},
+        depends_on=["phase-7-draft-arch"],
+        blocks=["phase-9-lifecycle-graph"],
+        artifacts=[
+            _artifact(".lifecycle/snapshots/arch_latest.md", 800),
+            _artifact(".lifecycle/steps/arch-score.json", 30),
+            _artifact(".lifecycle/specs/tech.spec.json", 200),
         ],
-        "validation_type": "prd",
-        "on_failure": "pause",
-        "max_retries": 3,
-        "pause_for": None,
-        "timeout_hint": None,
-        "intent_triggers": ["new-product", "new-feature", "prd-change"],
-        "condition": None,
-        "branches": None
-    },
-    {
-        "id": "phase-5-arch-interview",
-        "name": "架构访谈 + 项目类型识别",
-        "description": "与用户确认技术选型，自动识别项目类型",
-        "order": 5,
-        "auto": False,
-        "command": None,
-        "command_args": None,
-        "depends_on": ["phase-4-validate-prd"],
-        "blocks": ["phase-6-draft-arch"],
-        "artifacts": [
-            {"path": ".lifecycle/arch_interview.json", "min_bytes": 100, "required_headings": None, "required_substrings": None},
-            {"path": ".lifecycle/project_type.json", "min_bytes": 50, "required_headings": None, "required_substrings": None}
-        ],
-        "validation_type": None,
-        "on_failure": "pause",
-        "max_retries": 0,
-        "pause_for": "等待用户回答架构访谈问题（6 个问题）",
-        "timeout_hint": None,
-        "intent_triggers": ["new-product", "arch-change"],
-        "condition": None,
-        "branches": None
-    },
-    {
-        "id": "phase-6-draft-arch",
-        "name": "AI 协作架构设计",
-        "description": "Claude 生成架构草案（含 ADR 初稿）",
-        "order": 6,
-        "auto": False,
-        "command": "draft",
-        "command_args": {"doc_type": "arch"},
-        "depends_on": ["phase-5-arch-interview"],
-        "blocks": ["phase-7-validate-arch"],
-        "artifacts": [
-            {"path": "Docs/tech/ARCH.md", "min_bytes": 800, "required_headings": None, "required_substrings": None}
-        ],
-        "validation_type": None,
-        "on_failure": "pause",
-        "max_retries": 0,
-        "pause_for": "等待用户审核架构草案，对 ADR 做决策",
-        "timeout_hint": None,
-        "intent_triggers": ["new-product", "arch-change"],
-        "condition": None,
-        "branches": None
-    },
-    {
-        "id": "phase-7-validate-arch",
-        "name": "架构验证 + ADR 注册 + 快照",
-        "description": "验证架构文档，检查至少 1 条 ADR accepted",
-        "order": 7,
-        "auto": True,
-        "command": "validate",
-        "command_args": {"doc": "Docs/tech/ARCH.md", "type": "arch"},
-        "depends_on": ["phase-6-draft-arch"],
-        "blocks": ["phase-8-test-outline"],
-        "artifacts": [
-            {"path": ".lifecycle/snapshots/arch_latest.md", "min_bytes": 800, "required_headings": None, "required_substrings": None},
-            {"path": ".lifecycle/steps/arch-score.json", "min_bytes": 30, "required_headings": None, "required_substrings": None}
-        ],
-        "validation_type": "arch",
-        "on_failure": "pause",
-        "max_retries": 3,
-        "pause_for": None,
-        "timeout_hint": None,
-        "intent_triggers": ["new-product", "arch-change"],
-        "condition": None,
-        "branches": None
-    },
-    {
-        "id": "phase-8-test-outline",
-        "name": "自适应测试大纲生成",
-        "description": "根据项目类型选择维度集，生成测试大纲 + test_graph.json",
-        "order": 8,
-        "auto": True,
-        "command": "outline",
-        "command_args": {
+        validation_type="arch",
+        intent_triggers=["new-product", "new-feature", "prd-change", "arch-change"],
+        max_retries=3,
+    ),
+    _phase(
+        id="phase-9-lifecycle-graph",
+        name="Lifecycle Graph / Skimmer",
+        description="全量索引 Product、UED、Tech、Test、ADR、Risk 和迭代依赖",
+        order=9,
+        auto=True,
+        command="specs",
+        command_args={"action": "generate", "target": "graph"},
+        depends_on=["phase-8-tech-spec"],
+        blocks=["phase-10-test-spec"],
+        artifacts=[_artifact(".lifecycle/specs/lifecycle_graph.json", 200)],
+        intent_triggers=["new-product", "new-feature", "prd-change", "arch-change"],
+        max_retries=1,
+    ),
+    _phase(
+        id="phase-10-test-spec",
+        name="Test Spec 与测试大纲生成",
+        description="从 Lifecycle Graph 生成 Test Spec、测试大纲和回归选择依据",
+        order=10,
+        auto=True,
+        command="outline",
+        command_args={
             "action": "generate",
             "prd": "Docs/product/PRD.md",
             "arch": "Docs/tech/ARCH.md",
-            "output": "Docs/tests/MASTER_OUTLINE.md"
+            "output": "Docs/tests/MASTER_OUTLINE.md",
         },
-        "depends_on": ["phase-7-validate-arch"],
-        "blocks": ["phase-9-iterations"],
-        "artifacts": [
-            {"path": "Docs/tests/MASTER_OUTLINE.md", "min_bytes": 600, "required_headings": None, "required_substrings": None},
-            {"path": ".lifecycle/test_graph.json", "min_bytes": 200, "required_headings": None, "required_substrings": None}
+        depends_on=["phase-9-lifecycle-graph"],
+        blocks=["phase-11-iterations"],
+        artifacts=[
+            _artifact("Docs/tests/MASTER_OUTLINE.md", 600),
+            _artifact(".lifecycle/test_graph.json", 200),
+            _artifact(".lifecycle/specs/test.spec.json", 200),
+            _artifact(".lifecycle/specs/lifecycle_graph.json", 200),
         ],
-        "validation_type": "test_outline",
-        "on_failure": "pause",
-        "max_retries": 2,
-        "pause_for": None,
-        "timeout_hint": None,
-        "intent_triggers": ["new-product", "test-change", "prd-change"],
-        "condition": None,
-        "branches": None
-    },
-    {
-        "id": "phase-9-iterations",
-        "name": "Velocity 感知迭代规划",
-        "description": "生成迭代计划，设定工时估算",
-        "order": 9,
-        "auto": True,
-        "command": "plan",
-        "command_args": {
-            "prd": "Docs/product/PRD.md",
-            "arch": "Docs/tech/ARCH.md"
-        },
-        "depends_on": ["phase-8-test-outline"],
-        "blocks": ["phase-10-iter-exec"],
-        "artifacts": [
-            {"path": "Docs/iterations/INDEX.md", "min_bytes": 200, "required_headings": None, "required_substrings": None},
-            {"path": ".lifecycle/velocity.json", "min_bytes": 50, "required_headings": None, "required_substrings": None}
+        validation_type="test_outline",
+        intent_triggers=["new-product", "new-feature", "prd-change", "arch-change", "test-change"],
+        max_retries=2,
+    ),
+    _phase(
+        id="phase-11-iterations",
+        name="Velocity 感知迭代规划",
+        description="生成迭代计划，设定工时估算和验收边界",
+        order=11,
+        auto=True,
+        command="plan",
+        command_args={"prd": "Docs/product/PRD.md", "arch": "Docs/tech/ARCH.md"},
+        depends_on=["phase-10-test-spec"],
+        blocks=["phase-12-iter-exec"],
+        artifacts=[
+            _artifact("Docs/iterations/INDEX.md", 200),
+            _artifact(".lifecycle/velocity.json", 50),
         ],
-        "validation_type": None,
-        "on_failure": "pause",
-        "max_retries": 1,
-        "pause_for": None,
-        "timeout_hint": None,
-        "intent_triggers": ["new-product", "new-iteration", "prd-change"],
-        "condition": None,
-        "branches": None
-    },
-    {
-        "id": "phase-10-iter-exec",
-        "name": "迭代执行循环",
-        "description": "开发、测试、DoD 检查、门控验证",
-        "order": 10,
-        "auto": False,
-        "command": "gate",
-        "command_args": {"iteration": "{current_iteration}"},
-        "depends_on": ["phase-9-iterations"],
-        "blocks": [],
-        "artifacts": [],
-        "validation_type": None,
-        "on_failure": "pause",
-        "max_retries": 0,
-        "pause_for": "等待用户完成开发任务，运行测试，通过 DoD 检查",
-        "timeout_hint": None,
-        "intent_triggers": ["new-iteration", "continue-iter"],
-        "condition": None,
-        "branches": None
-    },
-    {
-        "id": "phase-11-change",
-        "name": "变更处理",
-        "description": "处理 PRD/Code/Test 变更，级联影响分析",
-        "order": 11,
-        "auto": True,
-        "command": "change",
-        "command_args": {"change_type": "{change_type}"},
-        "depends_on": ["phase-7-validate-arch"],
-        "blocks": [],
-        "artifacts": [
-            {"path": ".lifecycle/CHANGE_IMPACT.md", "min_bytes": 100, "required_headings": None, "required_substrings": None}
-        ],
-        "validation_type": None,
-        "on_failure": "pause",
-        "max_retries": 1,
-        "pause_for": None,
-        "timeout_hint": None,
-        "intent_triggers": ["prd-change", "code-change", "test-failure", "bug-fix", "gap"],
-        "condition": None,
-        "branches": None
-    }
+        intent_triggers=["new-product", "new-feature", "prd-change", "arch-change", "new-iteration"],
+        max_retries=1,
+    ),
+    _phase(
+        id="phase-12-iter-exec",
+        name="迭代执行循环",
+        description="开发、测试、DoD 检查、门控验证",
+        order=12,
+        auto=False,
+        command="gate",
+        command_args={"iteration": "{current_iteration}"},
+        execution_mode="pause_then_command",
+        depends_on=["phase-11-iterations"],
+        artifacts=[],
+        intent_triggers=["new-product", "new-iteration", "continue-iter"],
+        pause_for="等待用户完成开发任务，运行测试，通过 DoD 检查",
+    ),
 ]
 
 
@@ -362,7 +367,8 @@ def get_phases_by_intent(intent: str) -> List[PhaseDefinition]:
     if intent == "resume":
         return PHASES
 
-    return [p for p in PHASES if intent in p["intent_triggers"]]
+    # Include phases that match the intent OR have wildcard '*' in intent_triggers
+    return [p for p in PHASES if intent in p["intent_triggers"] or "*" in p["intent_triggers"]]
 
 
 def get_ordered_phases() -> List[PhaseDefinition]:

@@ -1,7 +1,7 @@
 """
 artifact_validator.py — 产物存在性与完整性验证器
 
-在 ./lifecycle gate 执行时被强制调用，验证每个迭代的产物是否
+在 ./orchestrator gate 执行时被强制调用，验证每个迭代的产物是否
 真实存在且质量达标。纯代码驱动，不依赖大模型判断。
 
 4 层验证架构：
@@ -121,7 +121,7 @@ def _check_layer1(root: Path) -> dict:
         prd_path,
         name="PRD.md 存在且非空",
         min_bytes=500,
-        hint="请先运行: ./lifecycle validate --doc Docs/product/PRD.md --type prd"
+        hint="请先运行: ./orchestrator resume --from-phase phase-4-product-spec"
     ))
 
     # ARCH.md
@@ -130,7 +130,7 @@ def _check_layer1(root: Path) -> dict:
         arch_path,
         name="ARCH.md 存在且非空",
         min_bytes=300,
-        hint="请先运行: ./lifecycle validate --doc Docs/tech/ARCH.md --type arch"
+        hint="请先运行: ./orchestrator resume --from-phase phase-8-tech-spec"
     ))
 
     # MASTER_OUTLINE.md — 必须包含有效 TST-ID
@@ -138,7 +138,7 @@ def _check_layer1(root: Path) -> dict:
     if not outline_path.exists():
         checks.append(_fail(
             "MASTER_OUTLINE.md 存在且含测试场景",
-            f"文件不存在: {outline_path}。请先运行: ./lifecycle outline generate"
+            f"文件不存在: {outline_path}。请先运行: ./orchestrator run --intent prd-change"
         ))
     else:
         content = outline_path.read_text(encoding="utf-8", errors="replace")
@@ -147,7 +147,7 @@ def _check_layer1(root: Path) -> dict:
             checks.append(_fail(
                 "MASTER_OUTLINE.md 存在且含测试场景",
                 f"MASTER_OUTLINE.md 存在但未找到任何 TST-Fxx-Sxx 格式的测试场景 ID。"
-                f"请重新生成: ./lifecycle outline generate"
+                f"请重新生成: ./orchestrator run --intent prd-change"
             ))
         else:
             checks.append(_ok(
@@ -173,7 +173,7 @@ def _check_layer2(root: Path, n: int) -> dict:
     if not plan_path.exists():
         checks.append(_fail(
             f"iter-{n}/PLAN.md 存在",
-            f"文件不存在: {plan_path}。请先运行: ./lifecycle plan"
+            f"文件不存在: {plan_path}。请先运行: ./orchestrator run --intent new-iteration"
         ))
     else:
         content = plan_path.read_text(encoding="utf-8", errors="replace")
@@ -203,21 +203,21 @@ def _check_layer2(root: Path, n: int) -> dict:
         checks.append(_fail(
             f"iter-{n}/test_cases.md 存在",
             f"文件不存在: {tc_path}。"
-            f"请先运行: ./lifecycle outline iter-tests --features <F01,...> --iteration {n}"
+            f"请先运行: ./orchestrator run --intent new-iteration"
         ))
     else:
         content = tc_path.read_text(encoding="utf-8", errors="replace")
         # 去掉空行和注释后，检查实质行数
         real_lines = [l for l in content.splitlines()
                       if l.strip() and not l.strip().startswith(">")
-                      and l.strip() != "_（由 `./lifecycle task create` 动态生成）_"]
+                      and l.strip() != "_（手动更新 .lifecycle/iter-N/task_status.json）_"]
         tst_ids_in_tc = re.findall(r"TST-[A-Z0-9]+-S\d+", content)
 
         if len(real_lines) < 5:
             checks.append(_fail(
                 f"iter-{n}/test_cases.md 有实质内容",
                 f"test_cases.md 内容过少（{len(real_lines)} 行有效内容），疑似空占位符。"
-                f"请重新生成: ./lifecycle outline iter-tests --features <F01,...> --iteration {n}"
+                f"请重新生成: ./orchestrator run --intent new-iteration"
             ))
         elif not tst_ids_in_tc:
             checks.append(_fail(
@@ -234,6 +234,14 @@ def _check_layer2(root: Path, n: int) -> dict:
     # TST 任务的 test_case_ref 交叉验证：引用的 ID 必须在 MASTER_OUTLINE 中真实存在
     outline_path = root / "Docs" / "tests" / "MASTER_OUTLINE.md"
     tasks_path = root / ".lifecycle" / "tasks.json"
+    using_fallback = False
+    if not tasks_path.exists():
+        tasks_path = root / ".lifecycle" / "task_status.json"
+        using_fallback = True
+
+    if not outline_path.exists() or not tasks_path.exists():
+        if not tasks_path.exists():
+            print(f"[artifact_validator] WARNING: No task data file found, skipping cross-validation")
 
     if outline_path.exists() and tasks_path.exists():
         outline_content = outline_path.read_text(encoding="utf-8", errors="replace")
@@ -244,6 +252,14 @@ def _check_layer2(root: Path, n: int) -> dict:
             tasks = tasks_data if isinstance(tasks_data, list) else tasks_data.get("tasks", [])
         except Exception:
             tasks = []
+
+        # Normalize task_status.json field names to match tasks.json schema
+        if using_fallback:
+            for t in tasks:
+                if "task_type" in t and "type" not in t:
+                    t["type"] = t["task_type"]
+                if "iter" in t and "iteration" not in t:
+                    t["iteration"] = t["iter"]
 
         iter_tst_tasks = [
             t for t in tasks
@@ -260,7 +276,7 @@ def _check_layer2(root: Path, n: int) -> dict:
             checks.append(_fail(
                 "TST 任务 test_case_ref 交叉验证",
                 f"以下测试任务引用的 TST-ID 在 MASTER_OUTLINE.md 中不存在：{orphan_refs}。"
-                "可能是测试大纲未更新，请重新生成: ./lifecycle outline generate"
+                "可能是测试大纲未更新，请重新生成: ./orchestrator run --intent prd-change"
             ))
         else:
             ref_count = len(iter_tst_tasks)
@@ -292,8 +308,7 @@ def _check_layer3(root: Path, n: int) -> dict:
         checks.append(_fail(
             f"iter-{n} 测试执行记录文件存在",
             f"缺少 .lifecycle/iter-{n}/test_results.json。\n"
-            f"  请在执行每个测试用例后运行:\n"
-            f"    ./lifecycle test-record --iteration {n} --test-id <TST-ID> --status pass/fail"
+            f"  请手动更新 .lifecycle/iter-{n}/test_results.json"
         ))
         # 文件不存在，无法继续后续检查
         return {"passed": False, "checks": checks}
@@ -313,6 +328,9 @@ def _check_layer3(root: Path, n: int) -> dict:
 
     # 读取本迭代的 TST 任务，检查每个都有执行记录
     tasks_path = root / ".lifecycle" / "tasks.json"
+    # Fallback to task_status.json if tasks.json doesn't exist
+    if not tasks_path.exists():
+        tasks_path = root / ".lifecycle" / "task_status.json"
     try:
         tasks_data = json.loads(tasks_path.read_text(encoding="utf-8"))
         tasks = tasks_data if isinstance(tasks_data, list) else tasks_data.get("tasks", [])
@@ -336,7 +354,7 @@ def _check_layer3(root: Path, n: int) -> dict:
             "所有完成的 TST 任务有执行记录",
             f"以下已标记为 done 的测试任务缺少执行记录（未在 test_results.json 中找到）：\n"
             + "\n".join(f"    - {m}" for m in missing_records)
-            + f"\n  请运行: ./lifecycle test-record --iteration {n} --test-id <TST-ID> --status pass/fail"
+            + f"\n  请手动更新 .lifecycle/iter-{n}/test_results.json"
         ))
     elif iter_tst_tasks:
         checks.append(_ok(
@@ -354,8 +372,7 @@ def _check_layer3(root: Path, n: int) -> dict:
         checks.append(_fail(
             "所有 fail 的测试用例有 resolution",
             f"以下测试用例标记为 fail 但缺少 resolution（说明如何处理该失败）：{fail_ids}。\n"
-            f"  请运行: ./lifecycle test-record --iteration {n} --test-id <TST-ID> "
-            f"--status fail --resolution \"已创建 ITR-{n}.DEV-xxx 修复\""
+            f"  请手动更新 .lifecycle/iter-{n}/test_results.json 中添加 resolution 字段"
         ))
     else:
         if results_list:
@@ -506,7 +523,7 @@ def _compute_coverage_metrics(root, iteration_n):
         graph = TestGraph.load(str(graph_path))
 
         # API coverage: APIs in graph vs APIs in ARCH.md
-        arch_path = Path(root) / "Docs" / "ARCH.md"
+        arch_path = Path(root) / "Docs" / "tech" / "ARCH.md"
         if arch_path.exists():
             from .dependency_extractor import extract_apis
             arch_text = arch_path.read_text(encoding='utf-8')
@@ -533,7 +550,7 @@ def _compute_coverage_metrics(root, iteration_n):
         import json
         ptype_path = Path(root) / ".lifecycle" / "project_type.json"
         if ptype_path.exists():
-            ptype_data = json.loads(ptype_path.read_text())
+            ptype_data = json.loads(ptype_path.read_text(encoding="utf-8"))
             ptype = ptype_data.get("project_type", "web")
             all_dims = get_dimensions(ptype)
             if all_dims:

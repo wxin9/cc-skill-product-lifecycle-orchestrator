@@ -102,6 +102,10 @@ def detect_prd_diff(
     Returns:
         ChangeReport dict.
     """
+    # Check new_prd_path exists
+    if not Path(new_prd_path).exists():
+        return {"error": f"PRD file not found: {new_prd_path}"}
+
     if old_prd_path and Path(old_prd_path).exists():
         old_content = Path(old_prd_path).read_text(encoding="utf-8", errors="replace")
         old_features = _extract_features(old_content)
@@ -143,8 +147,8 @@ def detect_prd_diff(
     for fid in old_features:
         if fid in new_features and old_features[fid] != new_features[fid]:
             # Heuristic: adjusted = minor wording, modified = structural change
-            old_words = set(re.findall(r"\w+", old_features[fid].lower()))
-            new_words = set(re.findall(r"\w+", new_features[fid].lower()))
+            old_words = set(re.findall(r"[a-zA-Z0-9_]+|[一-鿿]+", old_features[fid].lower()))
+            new_words = set(re.findall(r"[a-zA-Z0-9_]+|[一-鿿]+", new_features[fid].lower()))
             overlap = len(old_words & new_words) / max(len(old_words | new_words), 1)
             ctype = "adjusted" if overlap > 0.7 else "modified"
             changes.append({

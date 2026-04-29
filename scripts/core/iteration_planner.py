@@ -10,7 +10,6 @@ Rules:
 Usage:
   python scripts/core/iteration_planner.py plan --prd PRD.md --arch ARCH.md --output Docs/iterations/
   python scripts/core/iteration_planner.py validate --plan-dir Docs/iterations/iter-1/
-  python scripts/core/iteration_planner.py rebalance --plan-dir Docs/iterations/ --move TASK_ID --to-iter 2
 """
 from __future__ import annotations
 import os

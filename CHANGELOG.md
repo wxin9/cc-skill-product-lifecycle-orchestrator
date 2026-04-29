@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-04-29
+
+### Added
+
+- Explicit Phase 0-12 lifecycle chain with separate Product, UED, Tech, Lifecycle Graph, Test Spec, iteration planning, and iteration execution phases.
+- Skill display name and slug aligned as Product Lifecycle Orchestrator / `product-lifecycle-orchestrator`; `./orchestrator` remains the manual CLI entry.
+- Machine-readable Product/UED/Tech/Test Specs under `.lifecycle/specs/`, with JSON schema initialization.
+- Lifecycle Graph / Skimmer generation for cross-layer requirement, UED, module, API, and test traceability.
+- Impact-first change handling through `phase-1-impact-report`, writing `CHANGE_IMPACT.md` and `.lifecycle/specs/impact.json`.
+- Self-bootstrapping implementation ledger in `docs/dev/LIFECYCLE_IMPLEMENTATION_PLAN.md` and project-owned `.lifecycle/specs/`.
+- Dual publish package generation for Claude Code and Codex under `publish/claude-code/product-lifecycle-orchestrator` and `publish/codex/product-lifecycle-orchestrator`.
+- Codex package templates under `packaging/codex/`, including minimal `SKILL.md`, `agents/openai.yaml`, and runtime references.
+
+### Changed
+
+- `resume` continues with the checkpoint's original intent so unrelated phases are not pulled into a paused workflow.
+- `phase-12-iter-exec` uses `pause_then_command`, pausing before development and running the DoD gate only on resume.
+- `specs --target ued|graph` supports partial generation during intermediate phases, while full validation remains a hard gate for all-spec generation.
+- Checkpoint version is now `2.3`, with automatic migration from v2.0-v2.2 phase IDs to the current registry.
+- README, SKILL, manifest, Phase Reference, Execution Paths, and Claude Code / Codex publish packages now describe the v2.3 source-of-truth chain.
+- `orchestrator` supports `--project-root` so a skill package can run from its install directory while writing lifecycle artifacts to the user's project root.
+- Expected `pause_for_user` lifecycle pauses now return exit code `0` while preserving paused checkpoint state and notification details; validation and DoD failures remain non-zero.
+
+### Verified
+
+- `python3 -m pytest -q` passes with 284 tests.
+- Codex package validation passes with `quick_validate.py publish/codex/product-lifecycle-orchestrator`.
+- Installed Codex package smoke test confirms expected pauses return `0` and write artifacts only to the explicit project root.
+
+---
+
 ## [2.1.0] - 2026-04-21
 
 ### Added
@@ -267,7 +298,7 @@ No breaking changes from v2.0.0. Simply upgrade to v2.0.1 for improved reliabili
 ## [0.1.0] - 2026-04-03
 
 ### Added
-- Initial release of product-lifecycle skill
+- Initial release of the original Product Lifecycle Orchestrator skill line
 - Phase 0–8 workflow with script-enforced gates
 - 14 CLI commands (init, validate, task, plan, outline, gate, change, test-record, manual, status, pause, resume, cancel, step)
 - EARS requirement syntax validation for PRD documents

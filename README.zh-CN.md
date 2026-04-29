@@ -1,270 +1,161 @@
 [English](README.md) | [中文](README.zh-CN.md)
 
-# Product Lifecycle
+# Product Lifecycle Orchestrator
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.8%2B-brightgreen.svg)](https://www.python.org/)
-[![Release](https://img.shields.io/github/v/release/wxin9/cc-skill-product-lifecycle)](https://github.com/wxin9/cc-skill-product-lifecycle/releases)
+Product Lifecycle Orchestrator 是一个 Claude Code skill，用来把产品从想法推进到需求、UED、技术架构、测试大纲和迭代执行，并通过 machine specs 和 Lifecycle Graph 保证 AI 执行过程可检查、可追踪。
 
-> **脚本编排 + 交互暂停**的产品全生命周期管理 — orchestrator 自动执行 Phase 序列，在交互节点暂停，通知模型处理，然后恢复
+它主要面向从零开始的新项目；已有项目也建议先从文档和 specs 重新梳理，而不是直接从代码开始。
 
-## 🎯 核心价值
+## 它能做什么
 
-**解决的问题**：
-- ❌ 模型驱动工作流：模型中途失忆，后续脚本不执行
-- ❌ 手动步骤执行：用户必须知道下一步命令
-- ❌ 无交互处理：模型无法暂停等待用户输入
-- ❌ 无失败恢复：验证失败阻塞整个工作流
+- 从用户想法生成 PRD、UED、技术架构、测试大纲和迭代计划。
+- 把确认后的 Human Docs 转成 Product/UED/Tech/Test Specs。
+- 生成 Lifecycle Graph，把需求、交互、模块、API、测试连接到一起。
+- 在需求、架构、代码、测试变更前先做影响分析。
+- 在需要用户确认的节点暂停，并支持从 checkpoint 恢复。
+- 用 DoD gate 检查每轮迭代是否可以继续。
+- 同步维护 source 与 `publish/` 分发文件。
 
-**解决方案**：
-- ✅ **脚本编排引擎**：Orchestrator 自动执行 Phase 序列
-- ✅ **交互暂停**：Orchestrator 在用户审核/访谈节点暂停，通知模型
-- ✅ **失败恢复**：验证/DoD 失败暂停工作流，模型修复后恢复
-- ✅ **状态持久化**：Checkpoint 记录 Phase 级别状态，支持从断点恢复
+## 核心流程
 
-## ⭐ 新特性
+```text
+产品想法
+  -> Solution Advisor
+  -> PRD
+  -> Product Spec
+  -> UED
+  -> UED Spec
+  -> 技术架构
+  -> Tech Spec
+  -> Lifecycle Graph
+  -> Test Spec + 测试大纲
+  -> 迭代计划
+  -> 迭代执行 gate
+```
 
-### v2.1.0 — 方案分析器 + Phase 重新编号
+Specs 是最终 source of truth。Human Docs 是给用户确认和审阅的界面。
 
-- **方案分析器**：新增 Phase 1，分析需求、项目代码和业界方案，生成多个实现方案供用户选择
-- **Phase 1 新增**：在项目初始化之前新增实现方案分析阶段
-- **Phase 重新编号**：Phase 1-10 → Phase 1-11（Checkpoint 从 v2.0 自动迁移）
-- **Checkpoint v2.1**：从 v2.0 自动迁移，含备份和 Phase ID 重映射
+## 快速开始
 
-### v2.0.1 — Checkpoint 跟踪改进
+最简单的使用方式：调用这个 skill，然后直接说需求。
 
-- **Intent 始终记录**：Intent 和 user_input 现在每次运行时都会更新（不再仅限初始化）
-- **Resume 修复**：`get_phases_by_intent("resume")` 正确返回所有 Phase
-- **自动 PRD 快照**：SnapshotManager 集成到 validate 命令 — 验证后自动创建快照
-- **Phase 序列修复**：Phase 10 depends_on 已修正；prd-change 现在包含 Phase 7-8
+```text
+使用 product-lifecycle-orchestrator。我想做一个给小团队用的任务管理工具。
+```
 
-### v2.0.0 — Orchestrator 架构
+AI 接下来会：
 
-#### 1. Orchestrator 引擎
-- **脚本编排工作流**：根据意图自动执行 Phase 序列
-- **状态机**：Phase 级别状态转换，依赖检查
-- **无需模型记忆**：Orchestrator 处理整个工作流，模型只需响应通知
+1. 先做意图识别。
+2. 根据你的需求和当前项目状态，判断应该从哪一步开始。
+3. 启动或恢复对应的生命周期流程。
+4. 在需要你确认或审核的时候暂停。
 
-#### 2. 交互暂停
-- **自动暂停**：Orchestrator 在用户审核/访谈节点暂停
-- **双重通知**：stdout + `.lifecycle/notification.json`
-- **恢复支持**：模型修复问题后调用 `resume` 继续
+正常使用时，用户不需要自己选择 intent。
 
-#### 3. 失败恢复
-- **验证失败**：Orchestrator 暂停，模型修复后重试
-- **DoD 失败**：Orchestrator 暂停，模型解决后继续
-- **重试策略**：每个 Phase 可配置重试次数
-
-#### 4. Checkpoint 管理器
-- **Phase 级别状态**：记录已完成 Phase、当前 Phase、Phase 数据
-- **自动迁移**：迁移旧版 `steps/` 格式到 `checkpoint.json`
-- **断点恢复**：加载 checkpoint 从暂停 Phase 继续
-- **内存缓存**：带延迟写入的内存缓存 — 25 倍 I/O 减少
-- **线程安全**：基于 RLock 的并发控制
-
-#### 5. 意图解析器
-- **正则匹配**：基于模式的意图识别
-- **优先级排序**：Bug-fix (1) > PRD-change (3) > New-product (9)
-- **复合意图**：按顺序处理多个意图
-
-#### 6. 并行执行
-- **ParallelExecutor**：使用 Kahn 算法进行拓扑排序的依赖图分析
-- **并行分组**：独立的 Phase 并发执行（通过 `ORCHESTRATOR_PARALLEL=1` 启用）
-
-#### 7. 条件分支
-- **ConditionEvaluator**：安全地评估条件表达式，支持动态执行路径
-- **支持的运算符**：比较（`==`、`!=`、`<`、`>`、`<=`、`>=`）、逻辑（`and`、`or`、`not`）、成员（`in`、`not in`）
-
-#### 8. 回滚机制
-- **文件快照**：每个 Phase 执行前自动创建 `Docs/` 和 `.lifecycle/` 的快照
-- **回滚到任意节点**：恢复 checkpoint 状态和文件到任意历史回滚点
-- **回滚 CLI**：`./orchestrator rollback --id <rollback-id>`
-
-## 🚀 快速开始
-
-### 安装
+如果你手动运行 orchestrator，只需要传入 `--user-input`；`--intent` 默认就是 `auto`。
 
 ```bash
-# 克隆仓库
-git clone https://github.com/wxin9/cc-skill-product-lifecycle.git
-
-# 安装为 Claude Code 技能
-cp -r cc-skill-product-lifecycle ~/.claude/skills/product-lifecycle
+./orchestrator run --user-input "我想做一个任务管理工具"
 ```
 
-### 使用（Orchestrator 命令）
-
-安装后，使用 orchestrator 命令：
+流程暂停后，按通知生成或审核对应文件，然后恢复：
 
 ```bash
-# 启动新产品工作流
-./orchestrator run --intent new-product --user-input "我想做一个任务管理工具"
-
-# Orchestrator 会：
-# 1. 在 Phase 1 暂停 — 分析实现方案
-# 2. 执行 Phase 2（自动）— 创建文档结构
-# 3. 在 Phase 3 暂停 — 通知模型："等待 PRD 审核"
-# 4. 模型生成 PRD 草案
-# 5. 恢复：./orchestrator resume --from-phase phase-3-draft-prd
-# 6. 继续 Phase 4-10...
-```
-
-**示例对话**：
-
-```
-你："我想做一个任务管理工具"
-Claude: [调用 ./orchestrator run --intent new-product]
-        [Orchestrator 在 Phase 1 暂停]
-        [通知："等待用户选择实现方案"]
-        [Claude 分析需求，生成多个方案]
-        [调用 ./orchestrator resume --from-phase phase-1-analyze-solution]
-        [Orchestrator 在 Phase 3 暂停]
-        [通知："等待 PRD 审核"]
-        [Claude 生成 PRD 草案]
-        [调用 ./orchestrator resume]
-
-你："需求变了，要加支付功能"
-Claude: [调用 ./orchestrator run --intent prd-change]
-        [Orchestrator 执行 Phase 11 → Phase 3 → Phase 4...]
-
-你："登录流程发现 bug"
-Claude: [调用 ./orchestrator run --intent bug-fix]
-        [Orchestrator 执行 Phase 11 故障处理 → 暂停等待修复]
-```
-
-## 💡 核心功能
-
-| 功能 | 说明 |
-|------|------|
-| **AI 协作起草** | Claude 主动起草 PRD/架构，你做审稿人 |
-| **脚本强制门控** | `sys.exit(1)` 物理阻断，无法跳步 |
-| **复合意图识别** | "修了 bug 顺便调整需求" — 识别多个意图，排序执行 |
-| **项目类型自动识别** | 5 种类型（Web/CLI/Mobile/Data/Microservices），测试维度自适应 |
-| **自动快照 & Diff** | 验证通过自动快照，变更时自动对比 |
-| **Velocity 追踪** | 估算 vs 实际工时 + ASCII 趋势图 |
-| **DoD 门控扩展** | lint/覆盖率/代码审查，warn 或 fail |
-| **ADR 管理** | 架构决策记录全生命周期管理 |
-| **风险登记册** | 概率×影响矩阵自动评级 |
-| **Sprint Review** | 门控通过自动生成评审材料 |
-| **并行执行** | 独立 Phase 通过拓扑排序并发运行 |
-| **条件分支** | 基于项目类型/条件的动态执行路径 |
-| **回滚** | 恢复到任意历史 checkpoint，含文件快照还原 |
-
-## 📖 工作流程
-
-```
-Phase 0: 意图识别
-   ↓
-Phase 1: 实现方案分析 → 分析需求、项目代码和业界方案
-   ↓
-Phase 2: 项目初始化 → DoD/Risk/ADR 初始化
-   ↓
-Phase 3: AI 起草 PRD → 你审核修改
-   ↓
-Phase 4: 验证 PRD → 自动快照
-   ↓
-Phase 5: 架构访谈
-   ↓
-Phase 6: AI 起草架构 → 包含 ADR 初稿
-   ↓
-Phase 7: 验证架构 → 自动快照
-   ↓
-Phase 8: 生成测试图谱 + 自适应大纲
-   ↓
-Phase 9: 规划迭代 → Velocity 估算
-   ↓
-Phase 10: 执行迭代 → 4 层门控验证
-   ↓
-Phase 11: 处理变更 → 图谱遍历级联更新
-```
-
-### 变更意图路径
-
-| 意图 | Phase 序列 |
-|------|-----------|
-| `new-product` | Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 |
-| `prd-change` | Phase 11 → 3 → 4 → 5 → 6 → 7 → 8 → 9 |
-| `arch-change` | Phase 11 → 6 → 7 → 8 → 9 |
-| `bug-fix` | Phase 11 → 暂停等待修复 |
-| `new-iteration` | Phase 9 → 10 |
-| `resume` | 从 checkpoint 继续 |
-
-## 🛠️ 命令
-
-### Orchestrator 命令
-
-```bash
-# 启动编排
-./orchestrator run --intent new-product --user-input "我想做一个产品"
-
-# 从暂停状态恢复
 ./orchestrator resume --from-phase phase-3-draft-prd
+```
 
-# 显示状态
+查看当前状态：
+
+```bash
 ./orchestrator status
+```
 
-# 取消工作流
+取消当前流程：
+
+```bash
 ./orchestrator cancel
-
-# 并行执行（可选启用）
-ORCHESTRATOR_PARALLEL=1 ./orchestrator run --intent new-product --user-input "..."
 ```
 
-### 旧命令（v2.0 已移除）
+## AI 会判断什么
 
-- ~~`python -m scripts init`~~ → 使用 `./orchestrator run --intent new-product`
-- ~~`python -m scripts validate`~~ → Orchestrator 自动验证
-- ~~`python -m scripts draft`~~ → Orchestrator 自动起草
-- ~~`python -m scripts plan`~~ → Orchestrator 自动规划
-- ~~所有其他旧命令~~ → 使用 orchestrator 命令
+第一步永远是意图识别。AI 会根据你的描述和当前项目状态，选择合适的路径：
 
-## 📊 生成的项目结构
+| Intent | 什么时候会被选择 |
+|---|---|
+| `new-product` | 从零开始一个新产品 |
+| `new-feature` | 给已有 lifecycle 项目新增功能 |
+| `prd-change` | 产品需求发生变化 |
+| `arch-change` | 技术架构或技术选型变化 |
+| `bug-fix` | 修复 bug，并记录影响范围 |
+| `code-change` | 记录并分析代码层面的变更 |
+| `test-change` | 更新测试范围或测试覆盖 |
+| `new-iteration` | 开始下一轮迭代 |
+| `continue-iter` | 继续当前迭代 |
 
+如果你明确想强制走某条路径，也可以手动指定 intent：
+
+```bash
+./orchestrator run --intent prd-change --user-input "增加付费订阅能力"
 ```
+
+## 生成的文件
+
+```text
 Docs/
-├── product/PRD.md          # PRD 文档
-├── tech/ARCH.md            # 架构文档
-├── tests/MASTER_OUTLINE.md # 测试大纲
-└── iterations/iter-N/      # 迭代计划 + 测试记录 + Sprint Review
+  product/PRD.md
+  product/UED.md
+  tech/ARCH.md
+  tests/MASTER_OUTLINE.md
+  iterations/
 
 .lifecycle/
-├── checkpoint.json         # Phase 级别状态 (v2.1+)
-├── notification.json       # 暂停/失败通知 (v2.0+)
-├── test_graph.json         # 测试知识图谱
-├── config.json             # 项目配置
-├── dod.json                # DoD 规则
-├── risk_register.json      # 风险登记册
-├── velocity.json           # Velocity 追踪
-└── snapshots/              # 文档快照 + 回滚点
+  checkpoint.json
+  notification.json
+  CHANGE_IMPACT.md
+  test_graph.json
+  specs/
+    product.spec.json
+    ued.spec.json
+    tech.spec.json
+    test.spec.json
+    lifecycle_graph.json
+    impact.json
 ```
 
-## 🎓 模型兼容性
+## 变更流程
 
-- **推荐**：Claude Sonnet 4+ — 最佳起草质量
-- **可用**：Claude Haiku — 可完成完整工作流，起草质量稍低
-- **核心机制**：Orchestrator 处理工作流，模型只需响应通知
+需求、架构、代码或测试发生变化时，直接告诉 AI 发生了什么。AI 会先识别变更类型，生成影响分析，再继续后续文档和 specs 刷新。
 
-## 📚 文档
-
-- [CONTRIBUTING.md](docs/CONTRIBUTING.md) — 开发指南
-- [CODE_OF_CONDUCT.md](docs/CODE_OF_CONDUCT.md) — 贡献者公约
-- [SECURITY.md](docs/SECURITY.md) — 安全策略
-- [CHANGELOG.md](CHANGELOG.md) — 版本历史
-
-## 📄 许可证
-
-Apache License 2.0 — 见 [LICENSE](LICENSE)
-
-## 🏢 商业使用
-
-商业使用请在产品文档中注明出处：
-
-```
-本产品使用 Product-Lifecycle Skill (https://github.com/wxin9/cc-skill-product-lifecycle)
-Copyright 2026 Kaiser (wxin966@gmail.com)
-Apache License 2.0
+```text
+使用 product-lifecycle-orchestrator。需求变了：增加付费订阅能力。
 ```
 
----
+重点查看：
 
-**完整变更日志**：[CHANGELOG.md](CHANGELOG.md) | **GitHub**：[wxin9/cc-skill-product-lifecycle](https://github.com/wxin9/cc-skill-product-lifecycle)
+- `.lifecycle/CHANGE_IMPACT.md`
+- `.lifecycle/specs/impact.json`
+
+然后按工作流提示更新受影响的文档、specs 和测试。
+
+## 开发文档
+
+更详细的实现说明放在 `docs/dev/`：
+
+- `docs/dev/PHASE_REFERENCE.md`
+- `docs/dev/EXECUTION_PATHS.md`
+- `docs/dev/LIFECYCLE_IMPLEMENTATION_PLAN.md`
+- `docs/dev/OPTIMIZATION_DRAFT.md`
+
+## 验证
+
+```bash
+python3 -m pytest -q
+python3 - <<'PY'
+from scripts.core.lifecycle_specs import validate_specs
+print(validate_specs('.'))
+PY
+```
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).

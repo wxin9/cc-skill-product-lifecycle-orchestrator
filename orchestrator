@@ -1,15 +1,22 @@
 #!/bin/bash
-# Product-Lifecycle Orchestrator Wrapper Script v2.0
+# Product Lifecycle Orchestrator Wrapper Script v2.3
 #
 # This script wraps the Python orchestrator CLI for convenience.
 #
 # Usage:
-#   ./orchestrator run --intent new-product --user-input "我想做一个产品"
-#   ./orchestrator resume --from-phase phase-2-draft-prd
-#   ./orchestrator status
-#   ./orchestrator cancel
+#   ./orchestrator run --project-root "$PWD" --user-input "我想做一个产品"
+#   ./orchestrator resume --project-root "$PWD" --from-phase phase-3-draft-prd
+#   ./orchestrator status --project-root "$PWD"
+#   ./orchestrator cancel --project-root "$PWD"
 
-set -e
+# Note: NOT using 'set -e' because orchestrator returns exit code 0 for expected "paused" lifecycle state
+
+# Check python3 is available
+if ! command -v python3 &> /dev/null; then
+    echo "Error: python3 is required but not found in PATH"
+    echo "Please install Python 3.8+ from https://www.python.org/"
+    exit 1
+fi
 
 # Find skill path
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,5 +25,5 @@ SKILL_PATH="$SCRIPT_DIR"
 # Set PYTHONPATH
 export PYTHONPATH="$SKILL_PATH"
 
-# Execute orchestrator
-python3 -m scripts orchestrator "$@"
+# Execute orchestrator and forward exit code
+exec python3 -m scripts orchestrator "$@"

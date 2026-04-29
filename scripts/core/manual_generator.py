@@ -151,8 +151,11 @@ def update_manual_index(root: str | Path) -> list[str]:
     lines = content.splitlines(keepends=True)
     last_table_line = -1
     for i, line in enumerate(lines):
-        if line.strip().startswith("|") and "|" in line:
-            last_table_line = i
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.count("|") >= 3:
+            # Skip separator-only lines as insertion anchor
+            if not re.match(r"^\|[\s\-:]+\|", stripped):
+                last_table_line = i
 
     if last_table_line >= 0:
         lines.insert(last_table_line + 1, manual_row)
@@ -258,15 +261,29 @@ def _extract_iterations_info(root: Path, max_iter: int) -> list[dict]:
                 "data_flow": flow_m.group(1).strip() if flow_m else "",
             })
 
-        # 提取完成时间（从步骤文件推断）
-        gate_step = root / ".lifecycle" / "steps" / f"iter-{n}-gate-passed.json"
+        # 提取完成时间（从 checkpoint.json 的 phase_data 推断）
         completed_at = ""
-        if gate_step.exists():
+        checkpoint_path = root / ".lifecycle" / "checkpoint.json"
+        if checkpoint_path.exists():
             try:
-                gate_data = json.loads(gate_step.read_text(encoding="utf-8"))
-                completed_at = gate_data.get("recorded_at", "")[:10]  # YYYY-MM-DD
+                checkpoint_data = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+                phase_data = checkpoint_data.get("phase_data", {})
+                # Look for gate phase completion for this iteration
+                gate_key = f"iter-{n}-gate"
+                if gate_key in phase_data:
+                    completed_at = phase_data[gate_key].get("completed_at", "")[:10]  # YYYY-MM-DD
             except Exception:
                 pass
+
+        # Fallback: check old steps/ path for backward compatibility
+        if not completed_at:
+            gate_step = root / ".lifecycle" / "steps" / f"iter-{n}-gate-passed.json"
+            if gate_step.exists():
+                try:
+                    gate_data = json.loads(gate_step.read_text(encoding="utf-8"))
+                    completed_at = gate_data.get("recorded_at", "")[:10]  # YYYY-MM-DD
+                except Exception:
+                    pass
 
         results.append({
             "number": n,

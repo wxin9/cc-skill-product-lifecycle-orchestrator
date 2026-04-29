@@ -1,23 +1,208 @@
 {
-  "name": "product-lifecycle",
-  "version": "2.0.1",
-  "description": "AI 协作 + 强制门控的产品全生命周期管理",
-  "author": "Claude Code",
-  "created_at": "2026-04-04",
+  "name": "product-lifecycle-orchestrator",
+  "version": "2.3",
   "tier": "stateful",
-  "trigger_keywords": [
-    "产品设计", "PRD", "需求文档", "技术架构", "迭代规划",
-    "product-lifecycle", "产品管理",
-    "从零开始做产品", "迭代门控", "ADR", "velocity追踪", "DoD", "Sprint Review",
-    "test graph", "dependency review", "test knowledge graph", "维度"
+  "phases": [
+    {
+      "id": "phase-0-intent",
+      "description": "识别用户意图，确定执行路径",
+      "auto": true,
+      "artifacts": []
+    },
+    {
+      "id": "phase-1-analyze-solution",
+      "description": "分析需求、项目代码、业界方案，生成方案建议和轻量模式建议",
+      "auto": false,
+      "artifacts": [
+        {
+          "path": ".lifecycle/solution.json",
+          "min_bytes": 100
+        }
+      ]
+    },
+    {
+      "id": "phase-1-impact-report",
+      "description": "在需求或代码变更前生成全量高亮 Impact Report",
+      "auto": true,
+      "artifacts": [
+        {
+          "path": ".lifecycle/CHANGE_IMPACT.md",
+          "min_bytes": 100
+        },
+        {
+          "path": ".lifecycle/specs/impact.json",
+          "min_bytes": 100
+        }
+      ]
+    },
+    {
+      "id": "phase-2-init",
+      "description": "创建 Human Docs、runtime state、spec schema 和基础目录",
+      "auto": true,
+      "artifacts": [
+        {
+          "path": "Docs/INDEX.md",
+          "min_bytes": 200
+        },
+        {
+          "path": ".lifecycle/config.json",
+          "min_bytes": 100
+        },
+        {
+          "path": ".lifecycle/dod.json",
+          "min_bytes": 50
+        },
+        {
+          "path": "Docs/adr/INDEX.md",
+          "min_bytes": 80
+        },
+        {
+          "path": ".lifecycle/specs/schemas/product.schema.json",
+          "min_bytes": 100
+        }
+      ]
+    },
+    {
+      "id": "phase-3-draft-prd",
+      "description": "生成 Human PRD，用户审核需求语义和范围边界",
+      "auto": false,
+      "artifacts": [
+        {
+          "path": "Docs/product/PRD.md",
+          "min_bytes": 800
+        }
+      ]
+    },
+    {
+      "id": "phase-4-product-spec",
+      "description": "验证 PRD，通过后生成 Product Spec 和 PRD 快照",
+      "auto": true,
+      "artifacts": [
+        {
+          "path": ".lifecycle/snapshots/prd_latest.md",
+          "min_bytes": 800
+        },
+        {
+          "path": ".lifecycle/steps/prd-score.json",
+          "min_bytes": 30
+        },
+        {
+          "path": ".lifecycle/specs/product.spec.json",
+          "min_bytes": 200
+        }
+      ]
+    },
+    {
+      "id": "phase-5-draft-ued",
+      "description": "从 Product Spec 推导 Human UED，用户审核页面、流程、状态和反馈",
+      "auto": false,
+      "artifacts": [
+        {
+          "path": "Docs/product/UED.md",
+          "min_bytes": 400
+        }
+      ]
+    },
+    {
+      "id": "phase-6-ued-spec",
+      "description": "从 Product Spec 和 Human UED 生成 UED Spec",
+      "auto": true,
+      "artifacts": [
+        {
+          "path": ".lifecycle/specs/ued.spec.json",
+          "min_bytes": 200
+        }
+      ]
+    },
+    {
+      "id": "phase-7-draft-arch",
+      "description": "从 Product/UED Specs 推导 Human Architecture Doc 和关键 ADR",
+      "auto": false,
+      "artifacts": [
+        {
+          "path": "Docs/tech/ARCH.md",
+          "min_bytes": 800
+        }
+      ]
+    },
+    {
+      "id": "phase-8-tech-spec",
+      "description": "验证架构文档，通过后生成 Tech Spec 和架构快照",
+      "auto": true,
+      "artifacts": [
+        {
+          "path": ".lifecycle/snapshots/arch_latest.md",
+          "min_bytes": 800
+        },
+        {
+          "path": ".lifecycle/steps/arch-score.json",
+          "min_bytes": 30
+        },
+        {
+          "path": ".lifecycle/specs/tech.spec.json",
+          "min_bytes": 200
+        }
+      ]
+    },
+    {
+      "id": "phase-9-lifecycle-graph",
+      "description": "全量索引 Product、UED、Tech、Test、ADR、Risk 和迭代依赖",
+      "auto": true,
+      "artifacts": [
+        {
+          "path": ".lifecycle/specs/lifecycle_graph.json",
+          "min_bytes": 200
+        }
+      ]
+    },
+    {
+      "id": "phase-10-test-spec",
+      "description": "从 Lifecycle Graph 生成 Test Spec、测试大纲和回归选择依据",
+      "auto": true,
+      "artifacts": [
+        {
+          "path": "Docs/tests/MASTER_OUTLINE.md",
+          "min_bytes": 600
+        },
+        {
+          "path": ".lifecycle/test_graph.json",
+          "min_bytes": 200
+        },
+        {
+          "path": ".lifecycle/specs/test.spec.json",
+          "min_bytes": 200
+        },
+        {
+          "path": ".lifecycle/specs/lifecycle_graph.json",
+          "min_bytes": 200
+        }
+      ]
+    },
+    {
+      "id": "phase-11-iterations",
+      "description": "生成迭代计划，设定工时估算和验收边界",
+      "auto": true,
+      "artifacts": [
+        {
+          "path": "Docs/iterations/INDEX.md",
+          "min_bytes": 200
+        },
+        {
+          "path": ".lifecycle/velocity.json",
+          "min_bytes": 50
+        }
+      ]
+    },
+    {
+      "id": "phase-12-iter-exec",
+      "description": "开发、测试、DoD 检查、门控验证",
+      "auto": false,
+      "artifacts": []
+    }
   ],
-  "model_compatibility": {
-    "claude-opus-4-6": "full",
-    "claude-sonnet-4-6": "full",
-    "claude-haiku-4-5": "partial"
-  },
-  "dependencies": {
-    "python": ">=3.8",
-    "stdlib_only": true
-  }
+  "cancel_triggers": [
+    "cancel",
+    "取消",
+    "stop"
+  ]
 }

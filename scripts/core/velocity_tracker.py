@@ -3,7 +3,7 @@ velocity_tracker.py — 迭代速度追踪。
 记录每个迭代的估计工时 vs 实际工时，生成 ASCII 趋势图。
 """
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -15,11 +15,14 @@ class VelocityTracker:
 
     def _load(self) -> dict:
         if self.velocity_file.exists():
-            return json.loads(self.velocity_file.read_text())
+            try:
+                return json.loads(self.velocity_file.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                return {"iterations": [], "baseline_hours": None}
         return {"iterations": [], "baseline_hours": None}
 
     def _save(self, data: dict):
-        self.velocity_file.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+        self.velocity_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def start_iteration(self, iteration: int, estimated_hours: float):
         """记录迭代开始 + 估算工时。"""
@@ -28,13 +31,13 @@ class VelocityTracker:
         existing = [i for i in data["iterations"] if i["iteration"] == iteration]
         if existing:
             existing[0]["estimated_hours"] = estimated_hours
-            existing[0]["started_at"] = datetime.now().isoformat()
+            existing[0]["started_at"] = datetime.now(timezone.utc).isoformat()
         else:
             data["iterations"].append({
                 "iteration": iteration,
                 "estimated_hours": estimated_hours,
                 "actual_hours": None,
-                "started_at": datetime.now().isoformat(),
+                "started_at": datetime.now(timezone.utc).isoformat(),
                 "completed_at": None,
             })
         self._save(data)
@@ -48,7 +51,7 @@ class VelocityTracker:
             entry = {"iteration": iteration, "estimated_hours": None}
             data["iterations"].append(entry)
         entry["actual_hours"] = actual_hours
-        entry["completed_at"] = datetime.now().isoformat()
+        entry["completed_at"] = datetime.now(timezone.utc).isoformat()
 
         # 更新基准（平均实际工时）
         completed = [i for i in data["iterations"] if i["actual_hours"] is not None]
@@ -106,3 +109,27 @@ class VelocityTracker:
             lines.append(f"平均实际工时: {baseline:.1f}h | 下一迭代建议估算: {suggestion}h")
         lines.append("")
         return "\n".join(lines)
+
+    def initialize(self, iterations: list) -> None:
+        """
+        初始化 velocity.json。在迭代规划后调用，创建初始记录。
+        iterations: plan_iterations() 返回的迭代列表，每项含 "number" 和 "name" 字段。
+        """
+        data = self._load()
+        # 用规划的迭代初始化记录（如果已存在则不覆盖）
+        existing_nums = {i["iteration"] for i in data.get("iterations", [])}
+        for it in iterations:
+            n = it.get("number", 1)
+            if n not in existing_nums:
+                data["iterations"].append({
+                    "iteration": n,
+                    "name": it.get("name", f"迭代 {n}"),
+                    "estimated_hours": None,
+                    "actual_hours": None,
+                    "started_at": None,
+                    "completed_at": None,
+                })
+        if "initialized_at" not in data:
+            data["initialized_at"] = datetime.now(timezone.utc).isoformat()
+        self._save(data)
+        print(f"[velocity] 初始化 velocity.json，共 {len(iterations)} 个迭代")

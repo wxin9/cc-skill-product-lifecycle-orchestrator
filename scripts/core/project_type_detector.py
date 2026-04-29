@@ -22,7 +22,7 @@ KEYWORD_MAP = {
     "web": ["React", "Vue", "Angular", "Django", "Flask", "FastAPI", "Express",
             "HTML", "CSS", "浏览器", "前端", "Web", "HTTP", "REST", "nginx", "Caddy"],
     "cli": ["CLI", "命令行", "terminal", "argparse", "click", "cobra", "shell",
-            "bash", "脚本", "工具", "terminal"],
+            "bash", "脚本", "工具"],
     "mobile": ["iOS", "Android", "React Native", "Flutter", "Swift", "Kotlin",
                "移动端", "APP", "小程序", "uni-app"],
     "data-pipeline": ["Kafka", "Flink", "Spark", "ETL", "Pipeline", "数据管道",

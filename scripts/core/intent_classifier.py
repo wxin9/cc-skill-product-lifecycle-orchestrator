@@ -1,15 +1,15 @@
 """
 intent_classifier.py — 意图识别辅助模块
 
-辅助 Claude 在 Phase 0 快速判断用户输入属于哪种类型，
-以及建议从哪个 Phase 开始执行 product-lifecycle 工作流。
+辅助 AI agent 在 Phase 0 快速判断用户输入属于哪种类型，
+以及建议从哪个 Phase 开始执行 product-lifecycle-orchestrator 工作流。
 
 核心函数：
   check_project_state(root)             → 返回项目当前已完成状态摘要
   suggest_entry_point(text, state)      → 返回建议起始 Phase 及原因
 
 设计原则：
-  - 这个模块只做辅助判断，最终决策仍由 Claude（SKILL.md 规则）做出
+  - 这个模块只做辅助判断，最终决策仍由 AI agent（SKILL.md 规则）做出
   - check_project_state 读取物理检查点文件，结果完全可信
   - suggest_entry_point 做关键词匹配，置信度低时返回 needs_clarification=True
 """
@@ -64,57 +64,54 @@ def check_project_state(root: str | Path) -> dict:
         except Exception:
             pass
 
-    # 读取所有已完成步骤
-    steps_dir = lifecycle / "steps"
-    completed_steps: list[str] = []
-    if steps_dir.exists():
-        completed_steps = sorted(s.stem for s in steps_dir.glob("*.json"))
-
-    # 推导已完成的高层阶段
+    # 读取已完成阶段（优先从 checkpoint.json）
     completed_phases: list[str] = []
-    phase_map = [
-        ("project-initialized",   "Phase 1 项目初始化"),
-        ("prd-written",           "Phase 2 PRD 编写"),
-        ("prd-validated",         "Phase 3 PRD 验证"),
-        ("arch-doc-written",      "Phase 4 技术架构"),
-        ("test-outline-written",  "Phase 5 测试大纲"),
-        ("iterations-planned",    "Phase 6 迭代规划"),
-    ]
-    for step_id, phase_label in phase_map:
-        if step_id in completed_steps:
-            completed_phases.append(phase_label)
+    checkpoint_file = lifecycle / "checkpoint.json"
+    if checkpoint_file.exists():
+        try:
+            cp = json.loads(checkpoint_file.read_text(encoding="utf-8"))
+            completed_phases = cp.get("completed_phases", [])
+        except Exception:
+            pass
 
-    # 最近通过的迭代门控
+    # 最近通过的迭代门控（从 checkpoint metadata 读取）
     last_gate: Optional[int] = None
-    for step in sorted(completed_steps, reverse=True):
-        m = re.match(r"iter-(\d+)-gate-passed", step)
-        if m:
-            last_gate = int(m.group(1))
-            break
-    if last_gate is not None:
-        completed_phases.append(f"Phase 7 迭代 {last_gate} 执行完成")
+    if checkpoint_file.exists():
+        try:
+            cp = json.loads(checkpoint_file.read_text(encoding="utf-8"))
+            last_gate = cp.get("metadata", {}).get("current_iteration", None)
+            if last_gate and last_gate > 1:
+                last_gate = last_gate - 1
+            elif last_gate == 1:
+                last_gate = None
+        except Exception:
+            pass
 
     # 生成一句话状态描述
-    if not completed_steps:
+    if not completed_phases:
         summary = "项目已初始化但尚未开始任何 Phase"
-    elif last_gate is not None:
-        summary = f"迭代 {last_gate} 已通过门控，可开始迭代 {last_gate + 1} 或接受变更"
-    elif "iterations-planned" in completed_steps:
+    elif "phase-12-iter-exec" in completed_phases:
+        summary = "迭代执行中，可继续迭代或接受变更"
+    elif "phase-11-iterations" in completed_phases:
         summary = "迭代规划已完成，可开始执行迭代"
-    elif "arch-doc-written" in completed_steps:
-        summary = "架构文档已完成，可生成测试大纲"
-    elif "prd-validated" in completed_steps:
-        summary = "PRD 已验证，可进行技术架构设计"
-    elif "prd-written" in completed_steps:
+    elif "phase-10-test-spec" in completed_phases:
+        summary = "测试大纲与 Test Spec 已生成，可规划迭代"
+    elif "phase-8-tech-spec" in completed_phases:
+        summary = "架构已验证并生成 Tech Spec，可生成 Lifecycle Graph 与测试规格"
+    elif "phase-4-product-spec" in completed_phases:
+        summary = "PRD 已验证并生成 Product Spec，可进行 UED 与技术架构设计"
+    elif "phase-3-draft-prd" in completed_phases:
         summary = "PRD 已编写，等待验证"
-    else:
+    elif "phase-2-init" in completed_phases:
         summary = "项目已初始化，等待 PRD 编写"
+    else:
+        summary = "项目刚创建，等待意图识别"
 
     return {
         "has_lifecycle": True,
         "project_name": config.get("project_name", root.name),
         "current_iteration": config.get("current_iteration", 0),
-        "completed_steps": completed_steps,
+        "completed_steps": completed_phases,
         "completed_phases": completed_phases,
         "last_gate_passed": last_gate,
         "phase_summary": summary,
@@ -133,19 +130,19 @@ _INTENT_RULES = [
         "label": "Bug 修复 / Debug",
         "keywords": ["bug", "报错", "错误", "修复", "崩溃", "测试失败", "fail", "error",
                      "exception", "异常", "不能用", "不生效", "无法", "挂了"],
-        "required_steps": [],  # 任何状态都可能有 bug
-        "phase": "8c",
-        "phase_description": "Phase 8c（变更处理：测试失败 → bug 修复任务）",
-        "entry_command": "./lifecycle change test --test-id <TST-ID> --failure-type bug",
+        "required_phases": [],
+        "phase": "1",
+        "phase_description": "Phase 1（影响分析报告：bug 修复）",
+        "entry_command": "./orchestrator run --intent bug-fix",
     },
     {
         "intent": "test_gap",
         "label": "需求遗漏（测试暴露）",
         "keywords": ["需求遗漏", "gap", "测试发现新问题", "测试暴露了"],
-        "required_steps": ["test-outline-written"],
-        "phase": "8c_gap",
-        "phase_description": "Phase 8c（变更处理：需求遗漏 → PRD 变更任务）",
-        "entry_command": "./lifecycle change test --test-id <TST-ID> --failure-type gap",
+        "required_phases": ["phase-10-test-spec"],
+        "phase": "1",
+        "phase_description": "Phase 1（影响分析报告：需求遗漏 → PRD 变更任务）",
+        "entry_command": "./orchestrator run --intent gap",
     },
     {
         "intent": "prd_change",
@@ -153,38 +150,38 @@ _INTENT_RULES = [
         "keywords": ["prd改了", "需求变了", "需求变更", "需求改了", "产品需求更新",
                      "变更需求", "修改需求", "修改prd", "prd 改", "prd改", "需求变",
                      "需求修改", "修改了prd", "更新prd", "prd更新"],
-        "required_steps": ["prd-validated"],
-        "phase": "8a",
-        "phase_description": "Phase 8a（变更处理：PRD 变更 → 全链路级联）",
-        "entry_command": "./lifecycle change prd --new Docs/product/PRD.md",
+        "required_phases": ["phase-4-product-spec"],
+        "phase": "1",
+        "phase_description": "Phase 1（影响分析报告：PRD 变更 → 全链路级联）",
+        "entry_command": "./orchestrator run --intent prd-change",
     },
     {
         "intent": "code_change",
         "label": "代码变更",
         "keywords": ["代码变更", "修改了模块", "重写了", "改了代码", "代码改动", "重构了代码"],
-        "required_steps": ["iterations-planned"],
-        "phase": "8b",
-        "phase_description": "Phase 8b（变更处理：代码变更 → 测试影响追溯）",
-        "entry_command": "./lifecycle change code --components <模块名称>",
+        "required_phases": ["phase-11-iterations"],
+        "phase": "1",
+        "phase_description": "Phase 1（影响分析报告：代码变更 → 测试影响追溯）",
+        "entry_command": "./orchestrator run --intent code-change",
     },
     {
         "intent": "add_test",
         "label": "补充测试用例",
         "keywords": ["补充测试", "新增测试", "加测试用例", "测试场景", "测试覆盖", "增加测试"],
-        "required_steps": ["arch-doc-written"],
-        "phase": "5",
-        "phase_description": "Phase 5（测试大纲更新）",
-        "entry_command": "./lifecycle outline generate",
+        "required_phases": ["phase-8-tech-spec"],
+        "phase": "10",
+        "phase_description": "Phase 10（Test Spec 与测试大纲更新）",
+        "entry_command": "./orchestrator run --intent test-change",
     },
     {
         "intent": "new_iteration",
         "label": "开始新迭代",
         "keywords": ["新迭代", "下一个迭代", "开始迭代", "进入迭代", "迭代2", "第二迭代",
                      "迭代3", "第三迭代", "继续迭代", "下一迭代"],
-        "required_steps": ["iterations-planned"],
-        "phase": "7",
-        "phase_description": "Phase 7（迭代执行循环）",
-        "entry_command": "./lifecycle task create --category check --iteration N --title ...",
+        "required_phases": ["phase-11-iterations"],
+        "phase": "12",
+        "phase_description": "Phase 12（迭代执行循环）",
+        "entry_command": "./orchestrator run --intent new-iteration",
     },
     {
         "intent": "arch_change",
@@ -192,30 +189,30 @@ _INTENT_RULES = [
         "keywords": ["换数据库", "调整架构", "重构架构", "技术栈", "换技术", "架构变更",
                      "服务边界", "微服务", "架构升级", "技术调整", "换一下数据库",
                      "数据库换", "改数据库", "换框架", "改框架", "技术选型"],
-        "required_steps": ["prd-validated"],
-        "phase": "4",
-        "phase_description": "Phase 4（技术架构）",
-        "entry_command": "编辑 Docs/tech/ARCH.md → ./lifecycle validate --doc Docs/tech/ARCH.md --type arch",
+        "required_phases": ["phase-4-product-spec"],
+        "phase": "1",
+        "phase_description": "Phase 1 + Phase 7/8（影响分析 → 架构设计 → Tech Spec）",
+        "entry_command": "./orchestrator run --intent arch-change",
     },
     {
         "intent": "new_feature",
         "label": "新增功能需求",
         "keywords": ["新功能", "增加功能", "添加功能", "prd里加", "新需求", "功能扩展",
                      "增加一个", "添加一个", "需要支持", "需要增加"],
-        "required_steps": ["project-initialized"],
-        "phase": "2",
-        "phase_description": "Phase 2/3（PRD 更新 → 验证）",
-        "entry_command": "编辑 Docs/product/PRD.md → ./lifecycle validate --doc Docs/product/PRD.md --type prd",
+        "required_phases": ["phase-2-init"],
+        "phase": "1",
+        "phase_description": "Phase 1 + Phase 3-12（影响分析 → PRD/UED/Tech/Test Specs → 迭代）",
+        "entry_command": "./orchestrator run --intent new-feature",
     },
     {
         "intent": "new_project",
         "label": "全新产品",
         "keywords": ["新产品", "从零", "全新", "全新项目", "开始一个", "创建项目",
                      "新项目", "搭建项目", "帮我做"],
-        "required_steps": [],  # 无需任何前置步骤
+        "required_phases": [],
         "phase": "1",
-        "phase_description": "Phase 1（项目初始化）",
-        "entry_command": "./lifecycle init --name <项目名称>",
+        "phase_description": "Phase 1（Solution Advisor）",
+        "entry_command": "./orchestrator run --intent new-product",
     },
 ]
 
@@ -240,7 +237,7 @@ def suggest_entry_point(text: str, project_state: dict) -> dict:
     """
     text_lower = text.lower()
     has_lifecycle = project_state.get("has_lifecycle", False)
-    completed_steps = set(project_state.get("completed_steps", []))
+    completed_phases_set = set(project_state.get("completed_steps", []))
 
     # 如果没有 .lifecycle 目录，无论说什么，都从 Phase 1 开始
     if not has_lifecycle:
@@ -249,7 +246,7 @@ def suggest_entry_point(text: str, project_state: dict) -> dict:
             "intent_label": "全新产品",
             "phase": "1",
             "phase_description": "Phase 1（项目初始化）",
-            "entry_command": "./lifecycle init --name <项目名称>",
+            "entry_command": "./orchestrator run --intent new-product",
             "confidence": "high",
             "needs_clarification": False,
             "clarification_options": [],
@@ -264,9 +261,9 @@ def suggest_entry_point(text: str, project_state: dict) -> dict:
         if not hit_keywords:
             continue
 
-        # 检查前置步骤是否满足
-        required = rule.get("required_steps", [])
-        missing_prereqs = [s for s in required if s not in completed_steps]
+        # 检查前置阶段是否满足
+        required = rule.get("required_phases", [])
+        missing_prereqs = [s for s in required if s not in completed_phases_set]
 
         matched_rules.append({
             "rule": rule,
@@ -311,11 +308,14 @@ def suggest_entry_point(text: str, project_state: dict) -> dict:
         }
 
     # 计算 skip_summary（将跳过哪些 phases）
-    all_phases = ["Phase 1 初始化", "Phase 2 PRD", "Phase 3 PRD验证",
-                  "Phase 4 架构", "Phase 5 测试大纲", "Phase 6 迭代规划", "Phase 7 迭代执行"]
+    all_phases = ["Phase 0 意图识别", "Phase 1 Solution Advisor / Impact Report", "Phase 2 初始化",
+                  "Phase 3 PRD 起草", "Phase 4 Product Spec", "Phase 5 UED 起草",
+                  "Phase 6 UED Spec", "Phase 7 架构设计", "Phase 8 Tech Spec",
+                  "Phase 9 Lifecycle Graph", "Phase 10 Test Spec", "Phase 11 迭代规划",
+                  "Phase 12 迭代执行"]
     try:
-        phase_num = int(rule["phase"].split("_")[0])  # 处理 "8c_gap" → 8
-        skip = all_phases[:max(0, phase_num - 1)]
+        phase_num = int(rule["phase"])
+        skip = all_phases[:max(0, phase_num)]
     except (ValueError, IndexError):
         skip = []
 
@@ -361,12 +361,12 @@ def _needs_clarification_response(project_state: dict, reason: str) -> dict:
     last_gate = project_state.get("last_gate_passed")
 
     options = []
-    if "iterations-planned" in completed:
+    if "phase-11-iterations" in completed:
         n = (last_gate or 0) + 1
-        options.append(f"开始迭代 {n} → Phase 7 迭代执行")
-    if "prd-validated" in completed:
-        options.append("新增/修改功能需求 → Phase 2/3 PRD 更新")
-        options.append("代码或架构有变更 → Phase 8 变更处理")
+        options.append(f"开始迭代 {n} → Phase 12 迭代执行")
+    if "phase-4-product-spec" in completed:
+        options.append("新增/修改功能需求 → Phase 1 影响分析后刷新 PRD/Product Spec")
+        options.append("代码或架构有变更 → Phase 1 影响分析后刷新相关 Specs")
     if not completed:
         options.append("全新产品 → Phase 1 初始化")
 

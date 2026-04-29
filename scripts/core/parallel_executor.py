@@ -1,5 +1,5 @@
 """
-Parallel Executor for Product-Lifecycle Orchestrator.
+Parallel Executor for Product Lifecycle Orchestrator.
 
 Enables parallel execution of independent phases using topological sorting
 and thread pool execution.
@@ -93,9 +93,9 @@ class ParallelExecutor:
             >>> groups = executor.topological_sort()
             >>> for group in groups:
             ...     print(f"Parallel group: {group}")
-            ["phase-1-init"]
-            ["phase-2-draft-prd", "phase-4-arch-interview"]
-            ["phase-3-validate-prd", "phase-5-draft-arch"]
+            ["phase-2-init"]
+            ["phase-3-draft-prd"]
+            ["phase-4-product-spec"]
         """
         if start_phases is None:
             # Start with all phases

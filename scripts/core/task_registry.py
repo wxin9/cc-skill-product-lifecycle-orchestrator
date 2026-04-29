@@ -242,6 +242,11 @@ class TaskRegistry:
                 old_iter = task.get("iteration")
                 task["iteration"] = new_iteration
                 # Regenerate ID for new iteration
+                old_id = task["id"]
+                if old_id.startswith("ITR-"):
+                    parts = old_id.split(".")
+                    if len(parts) >= 2:
+                        task["id"] = f"ITR-{new_iteration}.{parts[1]}"
                 task["updated_at"] = datetime.now(timezone.utc).isoformat()
                 _save_registry(self.project_root, registry)
                 if old_iter:

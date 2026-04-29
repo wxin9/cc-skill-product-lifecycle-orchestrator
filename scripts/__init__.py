@@ -1,1 +1,1 @@
-"""product-lifecycle skill scripts package."""
+"""product-lifecycle-orchestrator skill scripts package."""

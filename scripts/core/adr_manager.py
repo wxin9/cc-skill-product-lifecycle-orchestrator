@@ -7,7 +7,7 @@ adr_manager.py — Architecture Decision Record 生命周期管理。
 """
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -51,11 +51,11 @@ class ADRManager:
 
     def _load_registry(self) -> list:
         if self.registry_file.exists():
-            return json.loads(self.registry_file.read_text())
+            return json.loads(self.registry_file.read_text(encoding="utf-8"))
         return []
 
     def _save_registry(self, records: list):
-        self.registry_file.write_text(json.dumps(records, ensure_ascii=False, indent=2))
+        self.registry_file.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def _next_num(self, records: list) -> int:
         if not records:
@@ -82,7 +82,7 @@ class ADRManager:
 
         content = ADR_TEMPLATE.format(
             num=num, title=title, status=status.capitalize(),
-            date=datetime.now().strftime("%Y-%m-%d"),
+            date=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             deciders=deciders, context=context,
             decision=decision, notes=notes,
         )
@@ -90,8 +90,8 @@ class ADRManager:
 
         records.append({
             "num": num, "title": title, "status": status,
-            "file": filename, "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
+            "file": filename, "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         })
         self._save_registry(records)
         self._rebuild_index(records)
@@ -111,16 +111,16 @@ class ADRManager:
 
         old_status = entry["status"]
         entry["status"] = new_status
-        entry["updated_at"] = datetime.now().isoformat()
+        entry["updated_at"] = datetime.now(timezone.utc).isoformat()
         if superseded_by:
             entry["superseded_by"] = superseded_by
 
         # 同步更新文件中的状态行
         path = self.adr_dir / entry["file"]
         if path.exists():
-            text = path.read_text()
-            text = re.sub(r'\*\*状态\*\*:.*', f'**状态**: {new_status.capitalize()}', text)
-            path.write_text(text)
+            text = path.read_text(encoding="utf-8")
+            text = re.sub(r'\*\*状态\*\*:.*', f'**状态**: {new_status.lower()}', text)
+            path.write_text(text, encoding="utf-8")
 
         self._save_registry(records)
         self._rebuild_index(records)
@@ -156,7 +156,7 @@ class ADRManager:
             "deprecated": "❌ Deprecated", "superseded": "🔄 Superseded",
         }
         lines = ["# Architecture Decision Records\n",
-                 f"> 最后更新: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n",
+                 f"> 最后更新: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}\n",
                  "| 编号 | 状态 | 标题 | 日期 |",
                  "|------|------|------|------|"]
         for r in sorted(records, key=lambda x: x["num"]):

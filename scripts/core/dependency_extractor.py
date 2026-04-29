@@ -275,10 +275,9 @@ def infer_upstream_downstream(features: List[dict]) -> Dict[str, dict]:
                         result[oid]["upstream_nodes"].append(fid)
                     if oid not in result[fid]["downstream_nodes"]:
                         result[fid]["downstream_nodes"].append(oid)
-            continue  # 上游功能自身不再做序号推断
 
         # 关键词分析：报表/导出类功能是几乎所有功能的下游
-        if _DOWNSTREAM_KEYWORDS.search(combined):
+        elif _DOWNSTREAM_KEYWORDS.search(combined):
             for other in sorted_features:
                 oid = other.get("feature_id", "")
                 if oid != fid:
@@ -286,19 +285,16 @@ def infer_upstream_downstream(features: List[dict]) -> Dict[str, dict]:
                         result[fid]["upstream_nodes"].append(oid)
                     if fid not in result[oid]["downstream_nodes"]:
                         result[oid]["downstream_nodes"].append(fid)
-            continue
 
-        # 序号推断：编号靠前的功能是靠后功能的默认上游
-        for j, other in enumerate(sorted_features):
-            oid = other.get("feature_id", "")
-            if oid == fid:
-                continue
-            if j < i:
-                # other 在 feat 之前 → other 是 feat 的上游
-                if oid not in result[fid]["upstream_nodes"]:
-                    result[fid]["upstream_nodes"].append(oid)
-                if fid not in result[oid]["downstream_nodes"]:
-                    result[oid]["downstream_nodes"].append(fid)
+        # 序号推断：仅相邻功能推断依赖（避免 O(N^2) 密集图）
+        if i > 0:
+            prev = sorted_features[i - 1]
+            pid = prev.get("feature_id", "")
+            if pid and pid != fid:
+                if pid not in result[fid]["upstream_nodes"]:
+                    result[fid]["upstream_nodes"].append(pid)
+                if fid not in result[pid]["downstream_nodes"]:
+                    result[pid]["downstream_nodes"].append(fid)
 
         # 显式引用：当前功能描述中提到其他功能名称
         for other in sorted_features:

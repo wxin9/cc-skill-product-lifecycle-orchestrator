@@ -1,11 +1,11 @@
 """
-Product-Lifecycle Orchestrator CLI — v2.0
+Product Lifecycle Orchestrator CLI — v2.3
 
 Breaking Changes:
   - All legacy commands (init, validate, draft, plan, etc.) have been removed
   - Use 'orchestrator run' to start a new workflow
   - Use 'orchestrator resume' to continue from a paused state
-  - Use 'orchestrator rollback' to manage rollback points (v2.2)
+  - Use 'orchestrator rollback' to manage rollback points (v2.3)
 
 Usage:
   python -m scripts orchestrator run --intent <intent> --user-input "<input>"
@@ -31,7 +31,16 @@ def _find_project_root(start: str = ".") -> Path:
     for parent in [p] + list(p.parents):
         if (parent / ".lifecycle").exists():
             return parent
+    print(f"[INFO] No .lifecycle/ directory found upstream, using cwd: {p}")
     return p  # fallback to cwd
+
+
+def _resolve_project_root(args) -> Path:
+    """Resolve explicit --project-root before falling back to cwd discovery."""
+    project_root = getattr(args, "project_root", None)
+    if project_root:
+        return Path(project_root).expanduser().resolve()
+    return _find_project_root()
 
 
 # --------------------------------------------------------------------------
@@ -42,8 +51,16 @@ def cmd_orchestrator_run(args) -> int:
     """Start orchestration workflow."""
     from scripts.core.orchestrator import Orchestrator
 
-    root = _find_project_root()
+    root = _resolve_project_root(args)
     orch = Orchestrator(root)
+
+    if getattr(args, 'from_phase', None):
+        from scripts.core.phases import get_phase_by_id, PHASES
+        if not get_phase_by_id(args.from_phase):
+            valid_ids = ", ".join(p["id"] for p in PHASES)
+            print(f"[ERROR] Unknown phase ID: '{args.from_phase}'")
+            print(f"  Valid phase IDs: {valid_ids}")
+            return 1
 
     return orch.run(
         intent=args.intent,
@@ -56,12 +73,21 @@ def cmd_orchestrator_resume(args) -> int:
     """Resume orchestration from paused state."""
     from scripts.core.orchestrator import Orchestrator
 
-    root = _find_project_root()
+    root = _resolve_project_root(args)
     orch = Orchestrator(root)
+
+    if getattr(args, 'from_phase', None):
+        from scripts.core.phases import get_phase_by_id, PHASES
+        if not get_phase_by_id(args.from_phase):
+            valid_ids = ", ".join(p["id"] for p in PHASES)
+            print(f"[ERROR] Unknown phase ID: '{args.from_phase}'")
+            print(f"  Valid phase IDs: {valid_ids}")
+            return 1
 
     return orch.run(
         intent="resume",
-        from_phase=args.from_phase
+        from_phase=args.from_phase,
+        user_input=getattr(args, 'user_input', None)
     )
 
 
@@ -69,11 +95,17 @@ def cmd_orchestrator_status(args) -> int:
     """Show orchestration status."""
     from scripts.core.checkpoint_manager import CheckpointManager
 
-    root = _find_project_root()
+    root = _resolve_project_root(args)
+
+    # Check if project is initialized
+    if not (root / ".lifecycle").exists():
+        print("Project not initialized")
+        return 1
+
     checkpoint_mgr = CheckpointManager(root)
     checkpoint = checkpoint_mgr.load()
 
-    print("=== Product-Lifecycle Status ===\n")
+    print("=== Product Lifecycle Orchestrator Status ===\n")
     print(f"Project: {checkpoint.get('project_name', 'Unknown')}")
     print(f"Intent: {checkpoint.get('intent', 'Unknown')}")
     print(f"Status: {checkpoint.get('status', 'Unknown')}")
@@ -104,12 +136,15 @@ def cmd_orchestrator_cancel(args) -> int:
     """Cancel orchestration workflow."""
     from scripts.core.checkpoint_manager import CheckpointManager
 
-    root = _find_project_root()
+    root = _resolve_project_root(args)
     checkpoint_mgr = CheckpointManager(root)
     checkpoint = checkpoint_mgr.load()
 
     checkpoint["status"] = "cancelled"
-    checkpoint_mgr.save(checkpoint)
+    checkpoint["current_phase"] = None
+    checkpoint["completed_phases"] = []
+    checkpoint["phase_data"] = {}
+    checkpoint_mgr.save(checkpoint, immediate=True)
     checkpoint_mgr.clear_notification()
 
     print("✓ Workflow cancelled")
@@ -117,10 +152,10 @@ def cmd_orchestrator_cancel(args) -> int:
 
 
 def cmd_orchestrator_rollback(args) -> int:
-    """Manage rollback points (v2.2)."""
+    """Manage rollback points (v2.3)."""
     from scripts.core.orchestrator import Orchestrator
 
-    root = _find_project_root()
+    root = _resolve_project_root(args)
     orch = Orchestrator(root)
 
     if args.list:
@@ -147,7 +182,7 @@ def cmd_orchestrator_rollback(args) -> int:
 
         if success:
             print(f"\n✓ Successfully rolled back to {args.rollback_point_id}")
-            print("You can now resume with: python -m scripts orchestrator resume")
+            print("You can now resume with: ./orchestrator resume")
             return 0
         else:
             print(f"\n✗ Failed to rollback to {args.rollback_point_id}")
@@ -165,7 +200,7 @@ def cmd_orchestrator_rollback(args) -> int:
 def main():
     parser = argparse.ArgumentParser(
         prog="python -m scripts",
-        description="Product-Lifecycle Orchestrator v2.0"
+        description="Product Lifecycle Orchestrator v2.3"
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -176,22 +211,44 @@ def main():
 
     # orchestrator run
     run_parser = orch_sub.add_parser("run", help="Start orchestration")
-    run_parser.add_argument("--intent", required=True, help="User intent (e.g., new-product, prd-change)")
+    # Collect all valid intents from phases.py dynamically
+    from scripts.core.phases import PHASES
+    _VALID_INTENTS = set()
+    for phase in PHASES:
+        for intent in phase.get("intent_triggers", []):
+            if intent != "*":
+                _VALID_INTENTS.add(intent)
+    _VALID_INTENTS.update(["auto", "resume"])
+    _VALID_INTENTS = sorted(_VALID_INTENTS)
+    run_parser.add_argument(
+        "--intent",
+        required=False,
+        default="auto",
+        choices=_VALID_INTENTS,
+        metavar="INTENT",
+        help=f"User intent. Valid values: {', '.join(_VALID_INTENTS)}. Default: auto (inferred from --user-input)"
+    )
     run_parser.add_argument("--user-input", help="Raw user input")
     run_parser.add_argument("--from-phase", help="Start from specific phase")
+    run_parser.add_argument("--project-root", help="Project root where Docs/ and .lifecycle/ are read or written")
 
     # orchestrator resume
     resume_parser = orch_sub.add_parser("resume", help="Resume from paused state")
     resume_parser.add_argument("--from-phase", help="Resume from specific phase")
+    resume_parser.add_argument("--user-input", help="User input context for placeholder replacement")
+    resume_parser.add_argument("--project-root", help="Project root where Docs/ and .lifecycle/ are read or written")
 
     # orchestrator status
     status_parser = orch_sub.add_parser("status", help="Show orchestration status")
+    status_parser.add_argument("--project-root", help="Project root where Docs/ and .lifecycle/ are read or written")
 
     # orchestrator cancel
     cancel_parser = orch_sub.add_parser("cancel", help="Cancel workflow")
+    cancel_parser.add_argument("--project-root", help="Project root where Docs/ and .lifecycle/ are read or written")
 
-    # orchestrator rollback (v2.2)
+    # orchestrator rollback (v2.3)
     rollback_parser = orch_sub.add_parser("rollback", help="Manage rollback points")
+    rollback_parser.add_argument("--project-root", help="Project root where Docs/ and .lifecycle/ are read or written")
     rollback_group = rollback_parser.add_mutually_exclusive_group(required=True)
     rollback_group.add_argument("--list", action="store_true", help="List available rollback points")
     rollback_group.add_argument("--rollback-point-id", help="Rollback to specific point")

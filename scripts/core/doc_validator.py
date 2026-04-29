@@ -266,7 +266,9 @@ def _validate_prd(content: str, path: str) -> dict:
 
         elif "风险" in name or "Risk" in name:
             has_risk_keyword = bool(re.search(r"(风险|risk)", body, re.IGNORECASE))
-            items = max(_count_list_items(body), _has_table(body, 2))
+            items = _count_list_items(body)
+            if _has_table(body, 2):
+                items = max(items, 2)
             if has_risk_keyword and items:
                 score += bonus_pts
             else:

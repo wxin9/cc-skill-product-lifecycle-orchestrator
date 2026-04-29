@@ -13,6 +13,7 @@ Usage:
   python scripts/core/test_outline.py iter-tests --outline MASTER_OUTLINE.md --iter-plan PLAN.md --output test_cases.md
 """
 from __future__ import annotations
+import os
 import re
 import sys
 import json
@@ -34,7 +35,7 @@ def _extract_prd_features(prd_path: str) -> List[dict]:
       1. ### F01 — 功能名称       (recommended)
       2. ### REQ-001 功能名称     (legacy)
 
-    If neither format is found, raises SystemExit with a friendly error.
+    If neither format is found, raises ValueError with a friendly error.
     No loose heading fallback — format mismatch is surfaced, not silently swallowed.
 
     Returns list of {feature_id, feature_name, description, prd_ref}.
@@ -83,17 +84,12 @@ def _extract_prd_features(prd_path: str) -> List[dict]:
             })
         return features
 
-    # Strong match failed — report error and exit
-    print(
-        "\n错误：无法从 PRD 提取功能点。\n"
-        "请确保核心功能章节使用以下格式之一：\n"
-        "  ### F01 — 功能名称（推荐）\n"
-        "  ### REQ-001 功能名称\n"
-        "\n当前 PRD 中没有找到以上格式的功能定义。\n"
-        f"请检查文件：{prd_path}\n",
-        file=sys.stderr,
+    # Strong match failed — raise error
+    raise ValueError(
+        f"无法从 PRD 提取功能点。请确保核心功能章节使用以下格式之一："
+        f" ### F01 — 功能名称（推荐）或 ### REQ-001 功能名称。"
+        f" 当前 PRD 中没有找到以上格式的功能定义。请检查文件：{prd_path}"
     )
-    sys.exit(1)
 
 
 def _extract_arch_context(arch_path: Optional[str]) -> dict:
@@ -129,24 +125,33 @@ def _extract_arch_context(arch_path: Optional[str]) -> dict:
 def _adjust_for_boundary(steps, feature_name):
     """Adjust steps for boundary testing."""
     result = steps[:]
-    if len(result) > 1:
-        result[0] = result[0].replace("有效", "边界值").replace("正常", "边界值")
+    for i, step in enumerate(result):
+        new_step = step.replace("有效", "边界值").replace("正常", "边界值")
+        if new_step != step:
+            result[i] = new_step
+            break
     return result
 
 
 def _adjust_for_error(steps, feature_name):
     """Adjust steps for error testing."""
     result = steps[:]
-    if len(result) > 1:
-        result[0] = result[0].replace("有效", "无效/异常").replace("正常", "异常")
+    for i, step in enumerate(result):
+        new_step = step.replace("有效", "无效/异常").replace("正常", "异常")
+        if new_step != step:
+            result[i] = new_step
+            break
     return result
 
 
 def _adjust_for_data(steps, feature_name):
     """Adjust steps for data anomaly testing."""
     result = steps[:]
-    if len(result) > 1:
-        result[0] = result[0].replace("输入", "输入异常数据").replace("有效数据", "脏数据/空数据")
+    for i, step in enumerate(result):
+        new_step = step.replace("输入", "输入异常数据").replace("有效数据", "脏数据/空数据")
+        if new_step != step:
+            result[i] = new_step
+            break
     return result
 
 
@@ -259,6 +264,7 @@ def _build_test_graph(features, all_scenarios, project_type, prd_version, arch_v
     from .test_graph import TestGraph
     from .dependency_extractor import extract_apis, extract_data_entities, infer_feature_dependencies
 
+    arch_text = ""  # Initialize before conditional assignment
     graph = TestGraph()
     graph.project_type = project_type
     graph.prd_version = prd_version
