@@ -7,8 +7,8 @@ The repository keeps one runtime source. This module emits two package shapes:
 - publish/codex/product-lifecycle-orchestrator
 
 Claude Code keeps the fuller repository-facing package. Codex receives a
-minimal skill package with SKILL.md, agents metadata, references, scripts, and
-the wrapper.
+Codex skill package with SKILL.md, repository README, agents metadata,
+references, scripts, and the wrapper.
 """
 from __future__ import annotations
 
@@ -72,12 +72,11 @@ def sync_publish_packages(
 def sync_claude_code_package(source_root: Path, output_root: Path) -> Path:
     """Generate the Claude Code oriented package."""
     package_root = output_root / "claude-code" / PACKAGE_NAME
+    template_root = source_root / "packaging" / "claude-code"
     _reset_dir(package_root)
 
     files = [
         "orchestrator",
-        "README.md",
-        "README.zh-CN.md",
         "SKILL.md",
         "manifest.json",
         "skill_definition.json",
@@ -87,6 +86,8 @@ def sync_claude_code_package(source_root: Path, output_root: Path) -> Path:
     for rel in files:
         _copy_file(source_root / rel, package_root / rel)
 
+    _copy_file(template_root / "README.md", package_root / "README.md")
+    _copy_file(template_root / "README.zh-CN.md", package_root / "README.zh-CN.md")
     _copy_tree(source_root / "scripts", package_root / "scripts")
     _copy_tree(
         source_root / "docs" / "dev",
@@ -102,6 +103,7 @@ def sync_codex_package(source_root: Path, output_root: Path) -> Path:
     template_root = source_root / "packaging" / "codex"
     _reset_dir(package_root)
 
+    _copy_file(template_root / "README.md", package_root / "README.md")
     _copy_file(template_root / "SKILL.md", package_root / "SKILL.md")
     _copy_file(source_root / "LICENSE", package_root / "LICENSE")
     _copy_file(source_root / "orchestrator", package_root / "orchestrator")
